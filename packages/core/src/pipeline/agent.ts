@@ -176,32 +176,75 @@ export async function runAgentLoop(
   let lastAssistantMessage = "";
 
   for (let turn = 0; turn < maxTurns; turn++) {
-    const response = await config.client.chat.completions.create({
+    // Use streaming (some providers like codex-for.me require it)
+    const stream = await config.client.chat.completions.create({
       model: config.model,
       messages,
       tools: TOOLS,
       tool_choice: "auto",
+      stream: true,
     });
 
-    const choice = response.choices[0];
-    const msg = choice.message;
+    // Accumulate streamed response into a complete message
+    let content = "";
+    const toolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map();
 
-    // Add assistant message to history
-    messages.push(msg);
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta;
+      if (!delta) continue;
+
+      if (delta.content) {
+        content += delta.content;
+      }
+
+      if (delta.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          const existing = toolCalls.get(tc.index);
+          if (existing) {
+            if (tc.function?.arguments) {
+              existing.arguments += tc.function.arguments;
+            }
+          } else {
+            toolCalls.set(tc.index, {
+              id: tc.id ?? "",
+              name: tc.function?.name ?? "",
+              arguments: tc.function?.arguments ?? "",
+            });
+          }
+        }
+      }
+    }
+
+    // Build the assistant message for history
+    const assembledToolCalls = toolCalls.size > 0
+      ? [...toolCalls.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([, tc]) => ({
+            id: tc.id,
+            type: "function" as const,
+            function: { name: tc.name, arguments: tc.arguments },
+          }))
+      : undefined;
+
+    messages.push({
+      role: "assistant" as const,
+      content: content || null,
+      ...(assembledToolCalls ? { tool_calls: assembledToolCalls } : {}),
+    } as OpenAI.Chat.Completions.ChatCompletionMessageParam);
 
     // If model produced text, emit it
-    if (msg.content) {
-      lastAssistantMessage = msg.content;
-      options?.onMessage?.(msg.content);
+    if (content) {
+      lastAssistantMessage = content;
+      options?.onMessage?.(content);
     }
 
     // If no tool calls, we're done
-    if (!msg.tool_calls || msg.tool_calls.length === 0) {
+    if (!assembledToolCalls || assembledToolCalls.length === 0) {
       break;
     }
 
     // Execute tool calls
-    for (const toolCall of msg.tool_calls) {
+    for (const toolCall of assembledToolCalls) {
       const fn = toolCall.function;
       const args = JSON.parse(fn.arguments) as Record<string, unknown>;
 
