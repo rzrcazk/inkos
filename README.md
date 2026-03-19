@@ -20,8 +20,7 @@
 
 Agent 写小说。写、审、改，全程接管。
 
-**现已支持原生英文创作** — 内置 10 个英文题材（LitRPG, Progression Fantasy, Isekai 等），含专属节奏规则、疲劳词表和审计维度。`--lang en` 即可切换。
-**Native English support** — 10 built-in English genre profiles with dedicated pacing rules, fatigue word lists, and audit dimensions. Set `--lang en` and go.
+**现已支持原生英文创作** — `--lang en` 即可切换，详见 [English README](README.en.md)。
 
 ## 快速开始
 
