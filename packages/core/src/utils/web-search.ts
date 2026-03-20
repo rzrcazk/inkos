@@ -12,10 +12,46 @@ export interface SearchResult {
 }
 
 /**
- * Search the web via DuckDuckGo HTML. No API key required.
- * Returns up to `maxResults` results with title, url, snippet.
+ * Search the web. Priority:
+ * 1. Tavily API (if TAVILY_API_KEY is set) — clean, structured, AI-optimized
+ * 2. DuckDuckGo HTML fallback — free, no key needed
  */
 export async function searchWeb(query: string, maxResults = 5): Promise<ReadonlyArray<SearchResult>> {
+  const tavilyKey = process.env.TAVILY_API_KEY;
+  if (tavilyKey) {
+    return searchViaTavily(query, tavilyKey, maxResults);
+  }
+  return searchViaDuckDuckGo(query, maxResults);
+}
+
+async function searchViaTavily(query: string, apiKey: string, maxResults: number): Promise<SearchResult[]> {
+  const res = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      api_key: apiKey,
+      query,
+      max_results: maxResults,
+      search_depth: "basic",
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Tavily search failed: ${res.status} ${await res.text().catch(() => "")}`);
+  }
+
+  const data = await res.json() as { results?: Array<{ title?: string; url?: string; content?: string }> };
+  return (data.results ?? []).map((r) => ({
+    title: r.title ?? "",
+    url: r.url ?? "",
+    snippet: r.content ?? "",
+  }));
+}
+
+async function searchViaDuckDuckGo(query: string, maxResults: number): Promise<SearchResult[]> {
   const encodedQuery = encodeURIComponent(query);
   const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodedQuery}`, {
     headers: {
@@ -32,26 +68,20 @@ export async function searchWeb(query: string, maxResults = 5): Promise<Readonly
   const html = await res.text();
   const results: SearchResult[] = [];
 
-  // Parse DuckDuckGo HTML results — each result is in a <div class="result">
   const resultBlocks = html.split(/class="result(?:\s|")/);
   for (let i = 1; i < resultBlocks.length && results.length < maxResults; i++) {
     const block = resultBlocks[i]!;
 
-    // Extract URL from <a class="result__a" href="...">
     const urlMatch = block.match(/href="([^"]+)"[^>]*class="result__a"|class="result__a"[^>]*href="([^"]+)"/);
     const rawUrl = urlMatch?.[1] ?? urlMatch?.[2] ?? "";
-
-    // DuckDuckGo wraps URLs in redirects — extract actual URL
     const actualUrlMatch = rawUrl.match(/uddg=([^&]+)/);
     const url = actualUrlMatch ? decodeURIComponent(actualUrlMatch[1]!) : rawUrl;
 
     if (!url || url.startsWith("/") || !url.startsWith("http")) continue;
 
-    // Extract title
     const titleMatch = block.match(/class="result__a"[^>]*>([^<]+)/);
     const title = titleMatch?.[1]?.trim() ?? "";
 
-    // Extract snippet from <a class="result__snippet">
     const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)(?:<\/a>|<\/td>)/);
     const snippet = snippetMatch?.[1]
       ?.replace(/<[^>]*>/g, "")
