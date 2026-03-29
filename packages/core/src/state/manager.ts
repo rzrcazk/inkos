@@ -232,24 +232,6 @@ export class StateManager {
     return Math.max(indexedChapter, durableChapter, runtimeState.manifest.lastAppliedChapter) + 1;
   }
 
-  async getPersistedChapterCount(bookId: string): Promise<number> {
-    const chaptersDir = join(this.bookDir(bookId), "chapters");
-    const chapterNumbers = new Set<number>();
-
-    try {
-      const files = await readdir(chaptersDir);
-      for (const file of files) {
-        const match = file.match(/^(\d+)_.*\.md$/);
-        if (!match) continue;
-        chapterNumbers.add(parseInt(match[1]!, 10));
-      }
-    } catch {
-      return 0;
-    }
-
-    return chapterNumbers.size;
-  }
-
   async loadChapterIndex(bookId: string): Promise<ReadonlyArray<ChapterMeta>> {
     const indexPath = join(this.bookDir(bookId), "chapters", "index.json");
     try {
@@ -339,6 +321,80 @@ export class StateManager {
     };
   }
 
+  async loadActiveBranchView(bookId: string): Promise<{
+    activeNodeId: string;
+    displayPath: string;
+    status: "active" | "awaiting-choice" | "dormant" | "completed";
+    visibleChapterNumbers: ReadonlyArray<number>;
+    pendingChoiceCount: number;
+  } | null> {
+    const book = await this.loadBookConfig(bookId).catch(() => null);
+    if (!book || book.narrativeMode !== "interactive-tree") {
+      return null;
+    }
+
+    const tree = await this.loadBranchTree(bookId);
+    if (!tree) {
+      return null;
+    }
+
+    const nodeMap = new Map(tree.nodes.map((node) => [node.nodeId, node]));
+    const activeNode = nodeMap.get(tree.activeNodeId);
+    if (!activeNode) {
+      return null;
+    }
+
+    const lineage = this.resolveInteractiveLineage(nodeMap, activeNode.nodeId);
+    const visibleChapterNumbers = this.resolveInteractiveChapterNumbers(lineage);
+    const pendingChoiceCount = tree.choices.filter(
+      (choice) => choice.fromNodeId === activeNode.nodeId && !choice.selected,
+    ).length;
+
+    return {
+      activeNodeId: activeNode.nodeId,
+      displayPath: activeNode.displayPath,
+      status: activeNode.status,
+      visibleChapterNumbers,
+      pendingChoiceCount,
+    };
+  }
+
+  async loadVisibleChapterIndex(
+    bookId: string,
+    options?: { readonly allBranches?: boolean },
+  ): Promise<ReadonlyArray<ChapterMeta>> {
+    const index = await this.loadChapterIndex(bookId);
+    if (options?.allBranches) {
+      return index;
+    }
+
+    const view = await this.loadActiveBranchView(bookId);
+    if (!view) {
+      return index;
+    }
+
+    const visibleNumbers = new Set(view.visibleChapterNumbers);
+    return index.filter((chapter) => visibleNumbers.has(chapter.number));
+  }
+
+  async getPersistedChapterCount(
+    bookId: string,
+    options?: { readonly allBranches?: boolean },
+  ): Promise<number> {
+    const persistedNumbers = await this.getPersistedChapterNumbers(bookId);
+    if (options?.allBranches) {
+      return persistedNumbers.length;
+    }
+
+    const view = await this.loadActiveBranchView(bookId);
+    if (!view) {
+      return persistedNumbers.length;
+    }
+
+    const visibleNumbers = new Set(view.visibleChapterNumbers);
+    return persistedNumbers.filter((chapterNumber) => visibleNumbers.has(chapterNumber)).length;
+  }
+
   async ensureInteractiveTreeAt(bookDir: string): Promise<InteractiveBranchTree> {
     const existing = await this.loadBranchTreeAt(bookDir);
     if (existing) {
@@ -375,6 +431,63 @@ export class StateManager {
 
   async snapshotState(bookId: string, chapterNumber: number): Promise<void> {
     await this.snapshotStateAt(this.bookDir(bookId), chapterNumber);
+  }
+
+  private resolveInteractiveLineage(
+    nodeMap: ReadonlyMap<string, InteractiveBranchTree["nodes"][number]>,
+    startNodeId: string,
+  ): ReadonlyArray<InteractiveBranchTree["nodes"][number]> {
+    const lineage: InteractiveBranchTree["nodes"] = [];
+    const visited = new Set<string>();
+    let cursor = nodeMap.get(startNodeId) ?? null;
+
+    while (cursor && !visited.has(cursor.nodeId)) {
+      lineage.push(cursor);
+      visited.add(cursor.nodeId);
+      cursor = cursor.parentNodeId ? nodeMap.get(cursor.parentNodeId) ?? null : null;
+    }
+
+    return lineage.reverse();
+  }
+
+  private resolveInteractiveChapterNumbers(
+    lineage: ReadonlyArray<InteractiveBranchTree["nodes"][number]>,
+  ): ReadonlyArray<number> {
+    const numbers: number[] = [];
+    const seen = new Set<number>();
+
+    for (const node of lineage) {
+      for (const chapterId of node.chapterIds) {
+        const match = chapterId.match(/^ch-(\d+)$/);
+        if (!match) continue;
+        const chapterNumber = Number.parseInt(match[1] ?? "", 10);
+        if (!Number.isInteger(chapterNumber) || seen.has(chapterNumber)) {
+          continue;
+        }
+        seen.add(chapterNumber);
+        numbers.push(chapterNumber);
+      }
+    }
+
+    return numbers;
+  }
+
+  private async getPersistedChapterNumbers(bookId: string): Promise<ReadonlyArray<number>> {
+    const chaptersDir = join(this.bookDir(bookId), "chapters");
+    const chapterNumbers = new Set<number>();
+
+    try {
+      const files = await readdir(chaptersDir);
+      for (const file of files) {
+        const match = file.match(/^(\d+)_.*\.md$/);
+        if (!match) continue;
+        chapterNumbers.add(parseInt(match[1]!, 10));
+      }
+    } catch {
+      return [];
+    }
+
+    return [...chapterNumbers].sort((a, b) => a - b);
   }
 
   async snapshotStateAt(bookDir: string, chapterNumber: number): Promise<void> {

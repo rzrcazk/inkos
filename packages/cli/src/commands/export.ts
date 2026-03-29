@@ -10,6 +10,7 @@ export const exportCommand = new Command("export")
   .option("--format <format>", "Output format (txt, md, epub)", "txt")
   .option("--output <path>", "Output file path")
   .option("--approved-only", "Only export approved chapters")
+  .option("--all-branches", "For interactive books, include every branch instead of only the active branch")
   .option("--json", "Output JSON metadata")
   .action(async (bookIdArg: string | undefined, opts) => {
     try {
@@ -18,7 +19,7 @@ export const exportCommand = new Command("export")
       const state = new StateManager(root);
 
       const book = await state.loadBookConfig(bookId);
-      const index = await state.loadChapterIndex(bookId);
+      const index = await state.loadVisibleChapterIndex(bookId, { allBranches: opts.allBranches });
       const bookDir = state.bookDir(bookId);
       const chaptersDir = join(bookDir, "chapters");
 

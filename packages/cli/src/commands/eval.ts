@@ -48,12 +48,13 @@ export const evalCommand = new Command("eval")
   .argument("[book-id]", "Book ID (auto-detected if only one book)")
   .option("--json", "Output JSON only")
   .option("--chapters <range>", "Chapter range (e.g. 1-10, 5-20)")
-  .action(async (bookIdArg: string | undefined, opts: { json?: boolean; chapters?: string }) => {
+  .option("--all-branches", "For interactive books, include every branch instead of only the active branch")
+  .action(async (bookIdArg: string | undefined, opts: { json?: boolean; chapters?: string; allBranches?: boolean }) => {
     try {
       const root = findProjectRoot();
       const bookId = await resolveBookId(bookIdArg, root);
       const state = new StateManager(root);
-      const index = await state.loadChapterIndex(bookId);
+      const index = await state.loadVisibleChapterIndex(bookId, { allBranches: opts.allBranches });
       const bookDir = state.bookDir(bookId);
       const chaptersDir = join(bookDir, "chapters");
 

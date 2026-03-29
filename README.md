@@ -352,7 +352,7 @@ inkos branch tree my-book
 inkos branch switch my-book <node-id>
 ```
 
-`interactive-tree` v1 当前只做章节末分支，不支持自由输入动作；`export` / `review` 默认仍只看当前 active branch。
+`interactive-tree` v1 当前只做章节末分支，不支持自由输入动作；`status` / `review` / `export` / `eval` 默认只看当前 active branch，如需查看整棵分支树可加 `--all-branches`。
 
 | 命令 | 说明 |
 |------|------|
@@ -370,14 +370,15 @@ inkos branch switch my-book <node-id>
 | `inkos audit [id] [n]` | 审计指定章节 |
 | `inkos revise [id] [n]` | 修订指定章节 |
 | `inkos agent <instruction>` | 自然语言 Agent 模式 |
-| `inkos review list [id]` | 审阅草稿 |
-| `inkos review approve-all [id]` | 批量通过 |
-| `inkos status [id]` | 项目状态 |
+| `inkos review list [id]` | 审阅草稿（互动书默认只看当前分支，`--all-branches` 查看全部分支） |
+| `inkos review approve-all [id]` | 批量通过（互动书默认只通过当前分支，`--all-branches` 通过全部分支） |
+| `inkos status [id]` | 项目状态（互动书默认显示当前分支，`--all-branches` 查看全部分支） |
 | `inkos branch tree [id]` | 查看互动分支树 |
 | `inkos branch choices [id]` | 查看当前 active branch 的待选项 |
 | `inkos branch choose [id] <choice-id>` | 选择一个待选分支 |
 | `inkos branch switch [id] <node-id>` | 切换到已有分支并恢复对应快照 |
-| `inkos export [id]` | 导出书籍（`--format txt/md/epub`、`--output <path>`、`--approved-only`） |
+| `inkos export [id]` | 导出书籍（`--format txt/md/epub`、`--output <path>`、`--approved-only`、`--all-branches`） |
+| `inkos eval [id]` | 评估书籍质量（互动书默认只看当前分支，`--all-branches` 查看全部分支） |
 | `inkos radar scan` | 扫描平台趋势 |
 | `inkos fanfic init` | 从原作素材创建同人书（`--from`、`--mode canon/au/ooc/cp`） |
 | `inkos config set-global` | 设置全局 LLM 配置（~/.inkos/.env） |

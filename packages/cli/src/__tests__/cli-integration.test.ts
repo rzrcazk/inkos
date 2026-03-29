@@ -12,26 +12,29 @@ const cliEntry = resolve(cliDir, "dist", "index.js");
 
 let projectDir: string;
 
-function run(args: string[], options?: { env?: Record<string, string> }): string {
+function run(args: string[], options?: { env?: Record<string, string>; cwd?: string }): string {
   return execFileSync("node", [cliEntry, ...args], {
-    cwd: projectDir,
+    cwd: options?.cwd ?? projectDir,
     encoding: "utf-8",
     env: {
       ...process.env,
       // Prevent global config from leaking into tests
-      HOME: projectDir,
+      HOME: options?.cwd ?? projectDir,
       ...options?.env,
     },
     timeout: 10_000,
   });
 }
 
-function runStderr(args: string[], options?: { env?: Record<string, string> }): { stdout: string; stderr: string; exitCode: number } {
+function runStderr(
+  args: string[],
+  options?: { env?: Record<string, string>; cwd?: string },
+): { stdout: string; stderr: string; exitCode: number } {
   try {
     const stdout = execFileSync("node", [cliEntry, ...args], {
-      cwd: projectDir,
+      cwd: options?.cwd ?? projectDir,
       encoding: "utf-8",
-      env: { ...process.env, HOME: projectDir, ...options?.env },
+      env: { ...process.env, HOME: options?.cwd ?? projectDir, ...options?.env },
       timeout: 10_000,
     });
     return { stdout, stderr: "", exitCode: 0 };
@@ -56,6 +59,12 @@ describe("CLI integration", () => {
   afterAll(async () => {
     await rm(projectDir, { recursive: true, force: true });
   });
+
+  async function createIsolatedProjectDir(prefix: string): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), prefix));
+    run(["init"], { cwd: dir });
+    return dir;
+  }
 
   describe("inkos --version", () => {
     it("prints version number", () => {
@@ -503,16 +512,26 @@ describe("CLI integration", () => {
   });
 
   describe("inkos status", () => {
-    it("shows project status with zero books", () => {
-      const output = run(["status"]);
-      expect(output).toContain("Books: 0");
+    it("shows project status with zero books", async () => {
+      const isolatedDir = await createIsolatedProjectDir("inkos-cli-status-empty-");
+      try {
+        const output = run(["status"], { cwd: isolatedDir });
+        expect(output).toContain("Books: 0");
+      } finally {
+        await rm(isolatedDir, { recursive: true, force: true });
+      }
     });
 
-    it("returns JSON with --json flag", () => {
-      const output = run(["status", "--json"]);
-      const data = JSON.parse(output);
-      expect(data.project).toBeDefined();
-      expect(data.books).toEqual([]);
+    it("returns JSON with --json flag", async () => {
+      const isolatedDir = await createIsolatedProjectDir("inkos-cli-status-json-");
+      try {
+        const output = run(["status", "--json"], { cwd: isolatedDir });
+        const data = JSON.parse(output);
+        expect(data.project).toBeDefined();
+        expect(data.books).toEqual([]);
+      } finally {
+        await rm(isolatedDir, { recursive: true, force: true });
+      }
     });
 
     it("errors for nonexistent book", () => {
@@ -659,6 +678,193 @@ describe("CLI integration", () => {
 
       const json = JSON.parse(run(["status", bookId, "--json"]));
       expect(json.books[0]?.chapters).toBe(1);
+    });
+
+    it("defaults interactive status, review, export, and eval to the active branch", async () => {
+      const state = new StateManager(projectDir);
+      const bookId = "interactive-visible-cli";
+      const bookDir = state.bookDir(bookId);
+      const chaptersDir = join(bookDir, "chapters");
+      await mkdir(chaptersDir, { recursive: true });
+      await writeFile(
+        join(bookDir, "book.json"),
+        JSON.stringify({
+          id: bookId,
+          title: "Interactive Visible CLI",
+          platform: "other",
+          genre: "other",
+          status: "active",
+          targetChapters: 10,
+          chapterWordCount: 2200,
+          narrativeMode: "interactive-tree",
+          createdAt: "2026-03-30T00:00:00.000Z",
+          updatedAt: "2026-03-30T00:00:00.000Z",
+        }, null, 2),
+        "utf-8",
+      );
+      await writeFile(
+        join(chaptersDir, "index.json"),
+        JSON.stringify([
+          {
+            number: 1,
+            title: "Seed",
+            status: "ready-for-review",
+            wordCount: 100,
+            createdAt: "2026-03-30T00:00:00.000Z",
+            updatedAt: "2026-03-30T00:00:00.000Z",
+            auditIssues: [],
+            lengthWarnings: [],
+          },
+          {
+            number: 2,
+            title: "Route A",
+            status: "ready-for-review",
+            wordCount: 120,
+            createdAt: "2026-03-30T00:00:00.000Z",
+            updatedAt: "2026-03-30T00:00:00.000Z",
+            auditIssues: [],
+            lengthWarnings: [],
+          },
+          {
+            number: 3,
+            title: "Route B",
+            status: "ready-for-review",
+            wordCount: 140,
+            createdAt: "2026-03-30T00:00:00.000Z",
+            updatedAt: "2026-03-30T00:00:00.000Z",
+            auditIssues: [],
+            lengthWarnings: [],
+          },
+        ], null, 2),
+        "utf-8",
+      );
+      await Promise.all([
+        writeFile(join(chaptersDir, "0001_Seed.md"), "# Seed\n\nMain route chapter.\n", "utf-8"),
+        writeFile(join(chaptersDir, "0002_Route_A.md"), "# Route A\n\nActive branch chapter.\n", "utf-8"),
+        writeFile(join(chaptersDir, "0003_Route_B.md"), "# Route B\n\nDormant branch chapter.\n", "utf-8"),
+      ]);
+      await state.saveBranchTree(bookId, {
+        version: 1,
+        rootNodeId: "root",
+        activeNodeId: "node-a",
+        nodes: [
+          {
+            nodeId: "root",
+            parentNodeId: null,
+            sourceChapterId: null,
+            sourceChapterNumber: 0,
+            branchDepth: 0,
+            branchLabel: "Main Route",
+            status: "completed",
+            snapshotRef: { chapterNumber: 1 },
+            selectedChoiceId: "choice-root-a",
+            chapterIds: ["ch-0001"],
+            displayPath: "main",
+          },
+          {
+            nodeId: "node-a",
+            parentNodeId: "root",
+            sourceChapterId: "ch-0001",
+            sourceChapterNumber: 1,
+            branchDepth: 1,
+            branchLabel: "Route A",
+            status: "active",
+            snapshotRef: { chapterNumber: 2 },
+            selectedChoiceId: null,
+            chapterIds: ["ch-0002"],
+            displayPath: "main.a",
+          },
+          {
+            nodeId: "node-b",
+            parentNodeId: "root",
+            sourceChapterId: "ch-0001",
+            sourceChapterNumber: 1,
+            branchDepth: 1,
+            branchLabel: "Route B",
+            status: "dormant",
+            snapshotRef: { chapterNumber: 1 },
+            selectedChoiceId: null,
+            chapterIds: ["ch-0003"],
+            displayPath: "main.b",
+          },
+        ],
+        choices: [
+          {
+            choiceId: "choice-root-a",
+            fromNodeId: "root",
+            toNodeId: "node-a",
+            label: "Route A",
+            intent: "Take route A.",
+            immediateGoal: "Advance route A.",
+            expectedCost: "Lose route B.",
+            expectedRisk: "Conflict rises.",
+            hookPressure: "A hook advances.",
+            characterPressure: "A pressure rises.",
+            tone: "tense",
+            selected: true,
+          },
+          {
+            choiceId: "choice-root-b",
+            fromNodeId: "root",
+            toNodeId: "node-b",
+            label: "Route B",
+            intent: "Take route B.",
+            immediateGoal: "Advance route B.",
+            expectedCost: "Lose route A.",
+            expectedRisk: "Momentum drops.",
+            hookPressure: "B hook advances.",
+            characterPressure: "B pressure rises.",
+            tone: "quiet",
+            selected: false,
+          },
+        ],
+      });
+
+      const statusText = run(["status", bookId, "--chapters"]);
+      expect(statusText).toContain("Chapters: 2 / 10");
+      expect(statusText).toContain("Active branch: main.a (node-a) | active");
+      expect(statusText).toContain('Ch.1 "Seed"');
+      expect(statusText).toContain('Ch.2 "Route A"');
+      expect(statusText).not.toContain('Ch.3 "Route B"');
+
+      const statusJson = JSON.parse(run(["status", bookId, "--json"]));
+      expect(statusJson.books[0]?.chapters).toBe(2);
+      expect(statusJson.books[0]?.activeBranch).toEqual({
+        activeNodeId: "node-a",
+        displayPath: "main.a",
+        status: "active",
+        visibleChapterNumbers: [1, 2],
+        pendingChoiceCount: 0,
+      });
+
+      const reviewJson = JSON.parse(run(["review", "list", bookId, "--json"]));
+      expect(reviewJson.pending.map((row: { chapter: number }) => row.chapter)).toEqual([1, 2]);
+
+      const exportDefault = join(projectDir, "interactive-default.txt");
+      run(["export", bookId, "--format", "txt", "--output", exportDefault]);
+      await expect(readFile(exportDefault, "utf-8")).resolves.toContain("Active branch chapter.");
+      await expect(readFile(exportDefault, "utf-8")).resolves.not.toContain("Dormant branch chapter.");
+
+      const evalJson = JSON.parse(run(["eval", bookId, "--json"]));
+      expect(evalJson.totalChapters).toBe(2);
+    });
+
+    it("supports --all-branches for interactive status, review, export, and eval", async () => {
+      const bookId = "interactive-visible-cli";
+
+      const statusText = run(["status", bookId, "--chapters", "--all-branches"]);
+      expect(statusText).toContain("Chapters: 3 / 10");
+      expect(statusText).toContain('Ch.3 "Route B"');
+
+      const reviewJson = JSON.parse(run(["review", "list", bookId, "--json", "--all-branches"]));
+      expect(reviewJson.pending.map((row: { chapter: number }) => row.chapter)).toEqual([1, 2, 3]);
+
+      const exportAll = join(projectDir, "interactive-all.txt");
+      run(["export", bookId, "--format", "txt", "--output", exportAll, "--all-branches"]);
+      await expect(readFile(exportAll, "utf-8")).resolves.toContain("Dormant branch chapter.");
+
+      const evalJson = JSON.parse(run(["eval", bookId, "--json", "--all-branches"]));
+      expect(evalJson.totalChapters).toBe(3);
     });
   });
 

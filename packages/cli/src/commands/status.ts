@@ -6,6 +6,7 @@ export const statusCommand = new Command("status")
   .description("Show project status")
   .argument("[book-id]", "Book ID (optional, shows all if omitted)")
   .option("--chapters", "Show per-chapter status and issues")
+  .option("--all-branches", "For interactive books, include every branch instead of only the active branch")
   .option("--json", "Output JSON")
   .action(async (bookIdArg: string | undefined, opts) => {
     try {
@@ -31,9 +32,10 @@ export const statusCommand = new Command("status")
 
       for (const id of bookIds) {
         const book = await state.loadBookConfig(id);
-        const index = await state.loadChapterIndex(id);
+        const index = await state.loadVisibleChapterIndex(id, { allBranches: opts.allBranches });
         const migrationHint = await getLegacyMigrationHint(root, id);
-        const persistedChapterCount = await state.getPersistedChapterCount(id);
+        const persistedChapterCount = await state.getPersistedChapterCount(id, { allBranches: opts.allBranches });
+        const activeBranch = opts.allBranches ? null : await state.loadActiveBranchView(id);
         const { profile: genreProfile } = await readGenreProfile(root, book.genre);
         const countingMode = resolveLengthCountingMode(book.language ?? genreProfile.language);
 
@@ -60,6 +62,7 @@ export const statusCommand = new Command("status")
           approved,
           pending,
           failed,
+          ...(activeBranch ? { activeBranch } : {}),
           ...(migrationHint ? { migrationHint } : {}),
           ...(opts.chapters ? {
             chapterList: index.map((ch) => ({
@@ -79,6 +82,9 @@ export const statusCommand = new Command("status")
           log(`    Chapters: ${persistedChapterCount} / ${book.targetChapters}`);
           log(`    Words: ${totalWords.toLocaleString()} (avg ${avgWords}/ch)`);
           log(`    Approved: ${approved} | Pending: ${pending} | Failed: ${failed}`);
+          if (activeBranch) {
+            log(`    Active branch: ${activeBranch.displayPath} (${activeBranch.activeNodeId}) | ${activeBranch.status}`);
+          }
           if (migrationHint) {
             log(`    Migration: ${migrationHint}`);
           }

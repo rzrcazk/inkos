@@ -9,6 +9,7 @@ reviewCommand
   .command("list")
   .description("List chapters pending review")
   .argument("[book-id]", "Book ID (optional, lists all books if omitted)")
+  .option("--all-branches", "For interactive books, include every branch instead of only the active branch")
   .option("--json", "Output JSON")
   .action(async (bookId: string | undefined, opts) => {
     try {
@@ -27,7 +28,7 @@ reviewCommand
       }> = [];
 
       for (const id of bookIds) {
-        const index = await state.loadChapterIndex(id);
+        const index = await state.loadVisibleChapterIndex(id, { allBranches: opts.allBranches });
         const pending = index.filter(
           (ch) =>
             ch.status === "ready-for-review" || ch.status === "audit-failed",
@@ -148,6 +149,7 @@ reviewCommand
   .command("approve-all")
   .description("Approve all pending chapters for a book")
   .argument("[book-id]", "Book ID (auto-detected if only one book)")
+  .option("--all-branches", "For interactive books, include every branch instead of only the active branch")
   .option("--json", "Output JSON")
   .action(async (bookIdArg: string | undefined, opts) => {
     try {
@@ -156,11 +158,16 @@ reviewCommand
       const state = new StateManager(root);
 
       const index = [...(await state.loadChapterIndex(bookId))];
+      const visibleIndex = await state.loadVisibleChapterIndex(bookId, { allBranches: opts.allBranches });
+      const visibleNumbers = new Set(visibleIndex.map((chapter) => chapter.number));
       let count = 0;
       const now = new Date().toISOString();
 
       const updated = index.map((ch) => {
-        if (ch.status === "ready-for-review" || ch.status === "audit-failed") {
+        if (
+          visibleNumbers.has(ch.number)
+          && (ch.status === "ready-for-review" || ch.status === "audit-failed")
+        ) {
           count++;
           return { ...ch, status: "approved" as const, updatedAt: now };
         }

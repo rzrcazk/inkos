@@ -688,6 +688,147 @@ describe("StateManager", () => {
         readFile(join(manager.interactiveDir("interactive-book"), "branch-tree.json"), "utf-8"),
       ).resolves.toContain("\"rootNodeId\": \"root\"");
     });
+
+    it("derives the active branch view and visible chapter index for interactive books", async () => {
+      const bookId = "interactive-visible";
+      await manager.saveBookConfig(bookId, {
+        id: bookId,
+        title: "Interactive Visible Book",
+        platform: "tomato",
+        genre: "other",
+        status: "active",
+        targetChapters: 10,
+        chapterWordCount: 2200,
+        narrativeMode: "interactive-tree",
+        createdAt: "2026-03-30T00:00:00Z",
+        updatedAt: "2026-03-30T00:00:00Z",
+      });
+      await manager.saveChapterIndex(bookId, [
+        {
+          number: 1,
+          title: "Chapter 1",
+          status: "ready-for-review",
+          wordCount: 2100,
+          createdAt: "2026-03-30T00:00:00Z",
+          updatedAt: "2026-03-30T00:00:00Z",
+          auditIssues: [],
+          lengthWarnings: [],
+        },
+        {
+          number: 2,
+          title: "Chapter 2A",
+          status: "ready-for-review",
+          wordCount: 2200,
+          createdAt: "2026-03-30T00:00:00Z",
+          updatedAt: "2026-03-30T00:00:00Z",
+          auditIssues: [],
+          lengthWarnings: [],
+        },
+        {
+          number: 3,
+          title: "Chapter 2B",
+          status: "ready-for-review",
+          wordCount: 2300,
+          createdAt: "2026-03-30T00:00:00Z",
+          updatedAt: "2026-03-30T00:00:00Z",
+          auditIssues: [],
+          lengthWarnings: [],
+        },
+      ]);
+      await manager.saveBranchTree(bookId, {
+        version: 1,
+        rootNodeId: "root",
+        activeNodeId: "node-a",
+        nodes: [
+          {
+            nodeId: "root",
+            parentNodeId: null,
+            sourceChapterId: null,
+            sourceChapterNumber: 0,
+            branchDepth: 0,
+            branchLabel: "Main Route",
+            status: "completed",
+            snapshotRef: { chapterNumber: 1 },
+            selectedChoiceId: "choice-root-a",
+            chapterIds: ["ch-0001"],
+            displayPath: "main",
+          },
+          {
+            nodeId: "node-a",
+            parentNodeId: "root",
+            sourceChapterId: "ch-0001",
+            sourceChapterNumber: 1,
+            branchDepth: 1,
+            branchLabel: "Route A",
+            status: "active",
+            snapshotRef: { chapterNumber: 2 },
+            selectedChoiceId: null,
+            chapterIds: ["ch-0002"],
+            displayPath: "main.a",
+          },
+          {
+            nodeId: "node-b",
+            parentNodeId: "root",
+            sourceChapterId: "ch-0001",
+            sourceChapterNumber: 1,
+            branchDepth: 1,
+            branchLabel: "Route B",
+            status: "dormant",
+            snapshotRef: { chapterNumber: 1 },
+            selectedChoiceId: null,
+            chapterIds: ["ch-0003"],
+            displayPath: "main.b",
+          },
+        ],
+        choices: [
+          {
+            choiceId: "choice-root-a",
+            fromNodeId: "root",
+            toNodeId: "node-a",
+            label: "Route A",
+            intent: "Take route A.",
+            immediateGoal: "Advance route A.",
+            expectedCost: "Lose route B.",
+            expectedRisk: "Escalate conflict.",
+            hookPressure: "A hook advances.",
+            characterPressure: "A pressure rises.",
+            tone: "tense",
+            selected: true,
+          },
+          {
+            choiceId: "choice-root-b",
+            fromNodeId: "root",
+            toNodeId: "node-b",
+            label: "Route B",
+            intent: "Take route B.",
+            immediateGoal: "Advance route B.",
+            expectedCost: "Lose route A.",
+            expectedRisk: "Reset momentum.",
+            hookPressure: "B hook advances.",
+            characterPressure: "B pressure rises.",
+            tone: "quiet",
+            selected: false,
+          },
+        ],
+      });
+
+      await expect(manager.loadActiveBranchView(bookId)).resolves.toEqual({
+        activeNodeId: "node-a",
+        displayPath: "main.a",
+        status: "active",
+        visibleChapterNumbers: [1, 2],
+        pendingChoiceCount: 0,
+      });
+      await expect(manager.loadVisibleChapterIndex(bookId)).resolves.toEqual([
+        expect.objectContaining({ number: 1 }),
+        expect.objectContaining({ number: 2 }),
+      ]);
+      await expect(manager.loadVisibleChapterIndex(bookId, { allBranches: true })).resolves.toEqual([
+        expect.objectContaining({ number: 1 }),
+        expect.objectContaining({ number: 2 }),
+        expect.objectContaining({ number: 3 }),
+      ]);
+    });
   });
 
   // -------------------------------------------------------------------------

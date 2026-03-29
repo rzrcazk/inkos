@@ -364,7 +364,7 @@ inkos branch tree my-book
 inkos branch switch my-book <node-id>
 ```
 
-`interactive-tree` v1 is chapter-end branching only for now. Free-form player actions are out of scope, and `export` / `review` still operate on the active branch by default.
+`interactive-tree` v1 is chapter-end branching only for now. Free-form player actions are out of scope, and `status` / `review` / `export` / `eval` operate on the active branch by default. Use `--all-branches` when you need the full branch tree.
 
 | Command | Description |
 |---------|-------------|
@@ -382,14 +382,15 @@ inkos branch switch my-book <node-id>
 | `inkos audit [id] [n]` | Audit a specific chapter |
 | `inkos revise [id] [n]` | Revise a specific chapter |
 | `inkos agent <instruction>` | Natural language agent mode |
-| `inkos review list [id]` | Review drafts |
-| `inkos review approve-all [id]` | Batch approve |
-| `inkos status [id]` | Project status |
+| `inkos review list [id]` | Review drafts (interactive books default to the active branch; use `--all-branches` for the whole tree) |
+| `inkos review approve-all [id]` | Batch approve (interactive books default to the active branch; use `--all-branches` for the whole tree) |
+| `inkos status [id]` | Project status (interactive books default to the active branch; use `--all-branches` for the whole tree) |
 | `inkos branch tree [id]` | Show the interactive branch tree |
 | `inkos branch choices [id]` | Show pending choices on the active branch |
 | `inkos branch choose [id] <choice-id>` | Choose one pending branch option |
 | `inkos branch switch [id] <node-id>` | Switch to an existing branch and restore its snapshot |
-| `inkos export [id]` | Export book (`--format txt/md/epub`, `--output <path>`, `--approved-only`) |
+| `inkos export [id]` | Export book (`--format txt/md/epub`, `--output <path>`, `--approved-only`, `--all-branches`) |
+| `inkos eval [id]` | Evaluate book quality (interactive books default to the active branch; use `--all-branches` for the whole tree) |
 | `inkos fanfic init` | Create a fanfic book from source material (`--from`, `--mode canon/au/ooc/cp`) |
 | `inkos config set-global` | Set global LLM config (~/.inkos/.env) |
 | `inkos config set-model <agent> <model>` | Per-agent model override (`--base-url`, `--provider`, `--api-key-env`) |
