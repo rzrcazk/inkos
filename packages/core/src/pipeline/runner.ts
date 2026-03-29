@@ -14,6 +14,8 @@ import { ChapterAnalyzerAgent } from "../agents/chapter-analyzer.js";
 import { ContinuityAuditor } from "../agents/continuity.js";
 import { ReviserAgent, DEFAULT_REVISE_MODE, type ReviseMode } from "../agents/reviser.js";
 import { StateValidatorAgent } from "../agents/state-validator.js";
+import { ChoiceGeneratorAgent } from "../agents/choice-generator.js";
+import { ChoiceAuditor } from "../agents/choice-auditor.js";
 import { RadarAgent } from "../agents/radar.js";
 import type { RadarSource } from "../agents/radar-source.js";
 import { readGenreProfile } from "../agents/rules-reader.js";
@@ -1349,6 +1351,15 @@ export class PipelineRunner {
     this.logStage(stageLanguage, { zh: "更新章节索引与快照", en: "updating chapter index and snapshots" });
     await this.state.snapshotState(bookId, chapterNumber);
     await this.syncCurrentStateFactHistory(bookId, chapterNumber);
+    await this.persistInteractiveBranchChoices({
+      bookId,
+      book,
+      bookDir,
+      chapterNumber,
+      chapterContent: finalContent,
+      chapterIntent: writeInput.chapterIntent,
+      language: pipelineLang,
+    });
 
     // 6. Send notification
     if (this.config.notifyChannels && this.config.notifyChannels.length > 0) {
@@ -1748,6 +1759,109 @@ ${matrix}`,
       completionTokens: a.completionTokens + b.completionTokens,
       totalTokens: a.totalTokens + b.totalTokens,
     };
+  }
+
+  private async persistInteractiveBranchChoices(params: {
+    readonly bookId: string;
+    readonly book: BookConfig;
+    readonly bookDir: string;
+    readonly chapterNumber: number;
+    readonly chapterContent: string;
+    readonly chapterIntent?: string;
+    readonly language: LengthLanguage;
+  }): Promise<void> {
+    if (params.book.narrativeMode !== "interactive-tree") {
+      return;
+    }
+
+    const branchTree = await this.state.ensureInteractiveTree(params.bookId);
+    const activeNodeIndex = branchTree.nodes.findIndex((node) => node.nodeId === branchTree.activeNodeId);
+    if (activeNodeIndex < 0) {
+      throw new Error(`Interactive branch tree is missing active node "${branchTree.activeNodeId}"`);
+    }
+
+    const activeNode = branchTree.nodes[activeNodeIndex]!;
+    const { currentFocus } = await this.state.loadControlDocuments(params.bookId);
+    const generator = new ChoiceGeneratorAgent(this.agentCtxFor("choice-generator", params.bookId));
+    const generated = await generator.generateChoices({
+      chapterNumber: params.chapterNumber,
+      chapterContent: params.chapterContent,
+      language: params.language,
+      chapterIntent: params.chapterIntent,
+      currentFocus,
+    });
+    const auditor = new ChoiceAuditor(this.agentCtxFor("choice-auditor", params.bookId));
+    const audited = await auditor.auditChoices({
+      chapterNumber: params.chapterNumber,
+      chapterEnding: params.chapterContent,
+      language: params.language,
+      choices: generated.choices,
+    });
+    if (!audited.passed) {
+      const reason = audited.issues[0]?.description ?? "interactive choices failed audit";
+      throw new Error(`Choice audit failed for chapter ${params.chapterNumber}: ${reason}`);
+    }
+
+    const chapterId = this.formatInteractiveChapterId(params.chapterNumber);
+    const existingNodes = branchTree.nodes.filter((node) => node.nodeId !== activeNode.nodeId);
+    const updatedActiveNode = {
+      ...activeNode,
+      status: "awaiting-choice" as const,
+      snapshotRef: {
+        chapterNumber: params.chapterNumber,
+      },
+      selectedChoiceId: null,
+      chapterIds: activeNode.chapterIds.includes(chapterId)
+        ? [...activeNode.chapterIds]
+        : [...activeNode.chapterIds, chapterId],
+    };
+
+    const suffixes = ["a", "b", "c", "d"];
+    const childNodes = audited.choices.map((choice, index) => {
+      const suffix = suffixes[index] ?? String(index + 1);
+      return {
+        nodeId: `${activeNode.nodeId}-${params.chapterNumber}-${suffix}`,
+        parentNodeId: activeNode.nodeId,
+        sourceChapterId: chapterId,
+        sourceChapterNumber: params.chapterNumber,
+        branchDepth: activeNode.branchDepth + 1,
+        branchLabel: choice.label,
+        status: "dormant" as const,
+        snapshotRef: {
+          chapterNumber: params.chapterNumber,
+        },
+        selectedChoiceId: null,
+        chapterIds: [],
+        displayPath: `${activeNode.displayPath}.${suffix}`,
+      };
+    });
+
+    const remainingChoices = branchTree.choices.filter((choice) => choice.fromNodeId !== activeNode.nodeId);
+    const persistedChoices = audited.choices.map((choice, index) => ({
+      choiceId: `choice-${activeNode.nodeId}-${params.chapterNumber}-${index + 1}`,
+      fromNodeId: activeNode.nodeId,
+      toNodeId: childNodes[index]!.nodeId,
+      label: choice.label,
+      intent: choice.intent,
+      immediateGoal: choice.immediateGoal,
+      expectedCost: choice.expectedCost,
+      expectedRisk: choice.expectedRisk,
+      hookPressure: choice.hookPressure,
+      characterPressure: choice.characterPressure,
+      tone: choice.tone,
+      selected: false,
+    }));
+
+    await this.state.saveBranchTree(params.bookId, {
+      ...branchTree,
+      activeNodeId: activeNode.nodeId,
+      nodes: [updatedActiveNode, ...existingNodes, ...childNodes],
+      choices: [...remainingChoices, ...persistedChoices],
+    });
+  }
+
+  private formatInteractiveChapterId(chapterNumber: number): string {
+    return `ch-${String(chapterNumber).padStart(4, "0")}`;
   }
 
   private async buildPersistenceOutput(

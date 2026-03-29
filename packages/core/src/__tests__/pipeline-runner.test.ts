@@ -14,6 +14,8 @@ import { ContinuityAuditor, type AuditIssue, type AuditResult } from "../agents/
 import { ReviserAgent, type ReviseOutput } from "../agents/reviser.js";
 import { ChapterAnalyzerAgent } from "../agents/chapter-analyzer.js";
 import { StateValidatorAgent } from "../agents/state-validator.js";
+import { ChoiceGeneratorAgent } from "../agents/choice-generator.js";
+import { ChoiceAuditor } from "../agents/choice-auditor.js";
 import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
 import { MemoryDB } from "../state/memory-db.js";
@@ -390,6 +392,133 @@ describe("PipelineRunner", () => {
 
       expect(tree).toContain("\"rootNodeId\": \"root\"");
       expect(tree).toContain("\"activeNodeId\": \"root\"");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("persists child branch nodes with a shared snapshot after an interactive chapter completes", async () => {
+    const { root, runner, state, bookId } = await createRunnerFixture();
+    const baseBook = await state.loadBookConfig(bookId);
+    await state.saveBookConfig(bookId, {
+      ...baseBook,
+      narrativeMode: "interactive-tree",
+    });
+    await state.ensureInteractiveTree(bookId);
+
+    vi.spyOn(WriterAgent.prototype, "writeChapter").mockResolvedValue(
+      createWriterOutput({
+        chapterNumber: 1,
+        title: "门后的灯",
+        content: "章末，林越必须决定是否接受看守的交易。",
+        wordCount: "章末，林越必须决定是否接受看守的交易。".length,
+      }),
+    );
+    vi.spyOn(ContinuityAuditor.prototype, "auditChapter").mockResolvedValue(
+      createAuditResult({
+        passed: true,
+        issues: [],
+        summary: "clean",
+      }),
+    );
+    vi.spyOn(ChapterAnalyzerAgent.prototype, "analyzeChapter").mockResolvedValue(
+      createAnalyzedOutput({
+        title: "门后的灯",
+        content: "章末，林越必须决定是否接受看守的交易。",
+        wordCount: "章末，林越必须决定是否接受看守的交易。".length,
+        chapterSummary: "| 1 | 门后的灯 | 林越 | 章末形成交易分叉 | 决策压力升高 | 看守线推进 | 紧张 | 分叉章 |",
+      }),
+    );
+    vi.spyOn(ChoiceGeneratorAgent.prototype, "generateChoices").mockResolvedValue({
+      choices: [
+        {
+          label: "接受交易",
+          intent: "借看守的力量立刻进入档案室。",
+          immediateGoal: "今晚进入档案室。",
+          expectedCost: "立即欠下一笔人情债。",
+          expectedRisk: "后续会受到监视与勒索。",
+          hookPressure: "看守线被强推进。",
+          characterPressure: "同伴的信任开始下滑。",
+          tone: "紧张",
+        },
+        {
+          label: "拒绝交易潜入",
+          intent: "绕开看守，自己找更危险的入口。",
+          immediateGoal: "自行潜入档案室。",
+          expectedCost: "失去最快的入口。",
+          expectedRisk: "失败就会直接暴露。",
+          hookPressure: "主线真相推进放缓。",
+          characterPressure: "主角承担全部决策后果。",
+          tone: "压迫",
+        },
+        {
+          label: "先稳住同伴",
+          intent: "先处理队内裂痕，再决定怎么进。",
+          immediateGoal: "暂时修复队伍关系。",
+          expectedCost: "错过当前窗口。",
+          expectedRisk: "档案可能被别人转移。",
+          hookPressure: "关系线优先，主线延后。",
+          characterPressure: "队友必须正面表达立场。",
+          tone: "克制",
+        },
+      ],
+      tokenUsage: ZERO_USAGE,
+    });
+    vi.spyOn(ChoiceAuditor.prototype, "auditChoices").mockResolvedValue({
+      passed: true,
+      issues: [],
+      choices: [
+        {
+          label: "接受交易",
+          intent: "借看守的力量立刻进入档案室。",
+          immediateGoal: "今晚进入档案室。",
+          expectedCost: "立即欠下一笔人情债。",
+          expectedRisk: "后续会受到监视与勒索。",
+          hookPressure: "看守线被强推进。",
+          characterPressure: "同伴的信任开始下滑。",
+          tone: "紧张",
+        },
+        {
+          label: "拒绝交易潜入",
+          intent: "绕开看守，自己找更危险的入口。",
+          immediateGoal: "自行潜入档案室。",
+          expectedCost: "失去最快的入口。",
+          expectedRisk: "失败就会直接暴露。",
+          hookPressure: "主线真相推进放缓。",
+          characterPressure: "主角承担全部决策后果。",
+          tone: "压迫",
+        },
+        {
+          label: "先稳住同伴",
+          intent: "先处理队内裂痕，再决定怎么进。",
+          immediateGoal: "暂时修复队伍关系。",
+          expectedCost: "错过当前窗口。",
+          expectedRisk: "档案可能被别人转移。",
+          hookPressure: "关系线优先，主线延后。",
+          characterPressure: "队友必须正面表达立场。",
+          tone: "克制",
+        },
+      ],
+    });
+
+    try {
+      await runner.writeNextChapter(bookId, 220);
+
+      const tree = await state.loadBranchTree(bookId);
+      expect(tree).not.toBeNull();
+      expect(tree?.activeNodeId).toBe("root");
+
+      const rootNode = tree?.nodes.find((node) => node.nodeId === "root");
+      expect(rootNode?.status).toBe("awaiting-choice");
+      expect(rootNode?.snapshotRef.chapterNumber).toBe(1);
+      expect(rootNode?.chapterIds).toEqual(["ch-0001"]);
+
+      const childNodes = tree?.nodes.filter((node) => node.parentNodeId === "root") ?? [];
+      expect(childNodes).toHaveLength(3);
+      expect(childNodes.every((node) => node.status === "dormant")).toBe(true);
+      expect(childNodes.every((node) => node.snapshotRef.chapterNumber === 1)).toBe(true);
+      expect(tree?.choices).toHaveLength(3);
+      expect(tree?.choices.every((choice) => choice.fromNodeId === "root")).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
