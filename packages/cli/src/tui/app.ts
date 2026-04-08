@@ -220,7 +220,7 @@ export async function launchTui(
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: `${gray}  ❯ ${reset}`,
+    prompt: `${gray}  ❯ `,
   });
 
   const cleanup = () => {
@@ -246,6 +246,7 @@ export async function launchTui(
   promptInput();
 
   for await (const line of rl) {
+    process.stdout.write(reset);
     const input = line.trim();
 
     if (!input) {
