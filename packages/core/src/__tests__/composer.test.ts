@@ -626,6 +626,7 @@ describe("ComposerAgent", () => {
           ...plan.intent,
           chapter: 8,
           goal: "Follow the black ring pressure.",
+          mustKeep: [],
           hookAgenda: {
             pressureMap: [],
             mustAdvance: [],

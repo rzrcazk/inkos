@@ -94,6 +94,7 @@ async function collectSelectedContext(
   plan: PlanChapterOutput,
   language: "zh" | "en",
 ): Promise<ContextPackage["selectedContext"]> {
+    const retrievalHints = deriveRetrievalHints(plan);
     const chapterBriefEntry = plan.brief
       ? [{
           source: "runtime/chapter_brief",
@@ -118,14 +119,14 @@ async function collectSelectedContext(
       maybeContextSource(
         storyDir,
         "current_state.md",
-        "Preserve hard state facts referenced by mustKeep.",
-        plan.intent.mustKeep,
+        "Preserve hard state facts referenced by the active chapter brief or hard constraints.",
+        retrievalHints,
       ),
       maybeContextSource(
         storyDir,
         "story_bible.md",
-        "Preserve canon constraints referenced by mustKeep.",
-        plan.intent.mustKeep,
+        "Preserve canon constraints referenced by the active chapter brief or hard constraints.",
+        retrievalHints,
       ),
       maybeContextSource(
         storyDir,
@@ -152,7 +153,7 @@ async function collectSelectedContext(
       chapterNumber: plan.intent.chapter,
       goal: plan.intent.goal,
       outlineNode: planningAnchor,
-      mustKeep: plan.intent.mustKeep,
+      mustKeep: retrievalHints,
     });
     const hookDebtEntries = await buildHookDebtEntries(
       storyDir,
@@ -196,6 +197,18 @@ async function collectSelectedContext(
       ...volumeSummaryEntries,
       ...hookEntries,
     ];
+}
+
+function deriveRetrievalHints(plan: PlanChapterOutput): string[] {
+  if (!plan.brief) {
+    return plan.intent.mustKeep;
+  }
+
+  return [
+    ...plan.brief.propsAndSetting,
+    ...plan.brief.hookPlan.flatMap((entry) => [entry.hookId, entry.targetEffect]),
+    plan.brief.goal,
+  ].filter(Boolean);
 }
 
 async function buildRecentChapterTrailEntries(
