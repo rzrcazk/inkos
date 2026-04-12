@@ -660,7 +660,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const id = c.req.param("id");
     const chapterNum = parseInt(c.req.param("chapter"), 10);
     const bookDir = state.bookDir(id);
-    const body = await c.req.json<{ mode?: string; brief?: string }>().catch(() => ({ mode: "local-fix" }));
+    const body = await c.req
+      .json<{ mode?: string; brief?: string }>()
+      .catch(() => ({ mode: "spot-fix", brief: undefined }));
 
     broadcast("revise:start", { bookId: id, chapter: chapterNum });
     try {
@@ -674,11 +676,11 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       const pipeline = new PipelineRunner(await buildPipelineConfig({
         externalContext: body.brief,
       }));
-      const normalizedMode = body.mode === "spot-fix" ? "local-fix" : (body.mode ?? "local-fix");
+      const normalizedMode = body.mode ?? "spot-fix";
       const result = await pipeline.reviseDraft(
         id,
         chapterNum,
-        normalizedMode as "polish" | "rewrite" | "rework" | "local-fix" | "anti-detect",
+        normalizedMode as "polish" | "rewrite" | "rework" | "spot-fix" | "anti-detect",
       );
       broadcast("revise:complete", { bookId: id, chapter: chapterNum });
       return c.json(result);
