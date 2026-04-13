@@ -51,7 +51,21 @@ clawhub install inkos          # 从 ClawHub 安装 InkOS Skill
 
 通过 npm 安装或克隆本项目时，`skills/SKILL.md` 已包含在内，🦞 可直接读取——无需额外从 ClawHub 安装。
 
-安装后，Claw 可通过 `exec` 调用 InkOS 的原子命令和控制面操作（`plan chapter`/`compose chapter`/`draft`/`audit`/`revise`/`write next`），`--json` 输出结构化数据供 Claw 解析决策。推荐流程是先更新 `author_intent.md` 或 `current_focus.md`，再 `plan` / `compose`，最后决定是否 `draft` 或完整 `write next`。也可以在 [ClawHub](https://clawhub.ai) 搜索 `inkos` 在线查看。
+安装后，Claw 应优先通过共享交互入口调用 InkOS：
+
+```bash
+inkos interact --json --message "继续当前书，但把节奏再收紧一点"
+```
+
+这条入口直接走和项目 TUI 相同的交互执行内核，因此 OpenClaw、TUI、Studio 共用同一套控制脑。返回的 JSON 包含：
+- 解析后的 request
+- assistant 文本回复
+- 更新后的 interaction session
+- execution state
+- pending decision
+- recent events
+
+`plan chapter` / `compose chapter` / `draft` / `audit` / `revise` / `write next` 这些原子命令仍然保留，但更适合作为底层工具，而不是 OpenClaw 的首选入口。也可以在 [ClawHub](https://clawhub.ai) 搜索 `inkos` 在线查看。
 
 ### 配置
 

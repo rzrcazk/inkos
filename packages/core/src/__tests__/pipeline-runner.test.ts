@@ -348,6 +348,67 @@ describe("PipelineRunner", () => {
     }
   });
 
+  it("applies creation-draft overrides while initializing a book", async () => {
+    const root = await mkdtemp(join(tmpdir(), "inkos-init-book-overrides-"));
+    const bookId = "override-book";
+    const book: BookConfig = {
+      id: bookId,
+      title: "Override Book",
+      platform: "tomato",
+      genre: "xuanhuan",
+      status: "outlining",
+      targetChapters: 20,
+      chapterWordCount: 2800,
+      createdAt: "2026-04-13T00:00:00.000Z",
+      updatedAt: "2026-04-13T00:00:00.000Z",
+    };
+
+    const runner = new PipelineRunner({
+      client: {
+        provider: "openai",
+        apiFormat: "chat",
+        stream: false,
+        defaults: {
+          temperature: 0.7,
+          maxTokens: 4096,
+          thinkingBudget: 0, maxTokensCap: null,
+        },
+      } as ConstructorParameters<typeof PipelineRunner>[0]["client"],
+      model: "test-model",
+      projectRoot: root,
+    });
+
+    const generateFoundationSpy = vi.spyOn(ArchitectAgent.prototype, "generateFoundation").mockResolvedValue({
+      storyBible: "# Story Bible\n",
+      volumeOutline: "# Volume Outline\n",
+      bookRules: "---\nversion: \"1.0\"\n---\n\n# Book Rules\n",
+      currentState: "# Current State\n",
+      pendingHooks: "# Pending Hooks\n",
+    });
+
+    try {
+      await runner.initBook(book, {
+        externalContext: "世界观重点：近未来港口城，账本与旧案牵出多方势力。",
+        authorIntent: "# 作者意图\n\n写成冷硬、克制、利益驱动的商战悬疑。\n",
+        currentFocus: "# 当前聚焦\n\n先把旧账线和港口势力网立住。\n",
+      });
+
+      expect(generateFoundationSpy).toHaveBeenCalledWith(
+        book,
+        expect.stringContaining("近未来港口城"),
+        undefined,
+      );
+
+      const storyDir = join(root, "books", bookId, "story");
+      await expect(readFile(join(storyDir, "author_intent.md"), "utf-8"))
+        .resolves.toContain("冷硬、克制、利益驱动");
+      await expect(readFile(join(storyDir, "current_focus.md"), "utf-8"))
+        .resolves.toContain("旧账线和港口势力网");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("feeds foundation review feedback into the regeneration call after a rejection", async () => {
     const { root, runner, bookId } = await createRunnerFixture();
     const reviewer = new FoundationReviewerAgent({

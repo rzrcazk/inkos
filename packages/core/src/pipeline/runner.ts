@@ -171,6 +171,12 @@ export interface ImportChaptersResult {
   readonly nextChapter: number;
 }
 
+export interface InitBookOptions {
+  readonly externalContext?: string;
+  readonly authorIntent?: string;
+  readonly currentFocus?: string;
+}
+
 export class PipelineRunner {
   private readonly state: StateManager;
   private readonly config: PipelineConfig;
@@ -436,7 +442,7 @@ export class PipelineRunner {
     return radar.scan();
   }
 
-  async initBook(book: BookConfig): Promise<void> {
+  async initBook(book: BookConfig, options: InitBookOptions = {}): Promise<void> {
     const architect = new ArchitectAgent(this.agentCtxFor("architect", book.id));
     const bookDir = this.state.bookDir(book.id);
     const stagingBookDir = join(
@@ -452,7 +458,7 @@ export class PipelineRunner {
     const foundation = await this.generateAndReviewFoundation({
       generate: (reviewFeedback) => architect.generateFoundation(
         book,
-        this.config.externalContext,
+        options.externalContext ?? this.config.externalContext,
         reviewFeedback,
       ),
       reviewer,
@@ -476,8 +482,15 @@ export class PipelineRunner {
       await this.state.ensureControlDocumentsAt(
         stagingBookDir,
         book.language ?? gp.language,
-        this.config.externalContext,
+        options.authorIntent ?? this.config.externalContext,
       );
+      if (options.currentFocus?.trim()) {
+        await writeFile(
+          join(stagingBookDir, "story", "current_focus.md"),
+          options.currentFocus.trimEnd() + "\n",
+          "utf-8",
+        );
+      }
 
       await this.state.saveChapterIndexAt(stagingBookDir, []);
 

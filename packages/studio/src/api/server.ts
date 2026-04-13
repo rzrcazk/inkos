@@ -7,8 +7,13 @@ import {
   PipelineRunner,
   createLLMClient,
   createLogger,
+  createInteractionToolsFromDeps,
   computeAnalytics,
   loadProjectConfig,
+  loadProjectSession,
+  processProjectInteractionInput,
+  processProjectInteractionRequest,
+  resolveSessionActiveBook,
   type PipelineConfig,
   type ProjectConfig,
   type LogSink,
@@ -182,12 +187,29 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     bookCreateStatus.set(bookId, { status: "creating" });
 
     const pipeline = new PipelineRunner(await buildPipelineConfig());
-    pipeline.initBook(bookConfig).then(
-      () => {
-        bookCreateStatus.delete(bookId);
-        broadcast("book:created", { bookId });
+    const tools = createInteractionToolsFromDeps(pipeline, state);
+    processProjectInteractionRequest({
+      projectRoot: root,
+      request: {
+        intent: "create_book",
+        title: body.title,
+        genre: body.genre,
+        language: body.language === "en" ? "en" : body.language === "zh" ? "zh" : undefined,
+        platform: body.platform,
+        chapterWordCount: body.chapterWordCount,
+        targetChapters: body.targetChapters,
       },
-      (e) => {
+      tools,
+    }).then(
+      (result: {
+        readonly session: { readonly activeBookId?: string };
+        readonly details?: Readonly<Record<string, unknown>>;
+      }) => {
+        const createdBookId = (result.details?.bookId as string | undefined) ?? result.session.activeBookId ?? bookId;
+        bookCreateStatus.delete(createdBookId);
+        broadcast("book:created", { bookId: createdBookId });
+      },
+      (e: unknown) => {
         const error = e instanceof Error ? e.message : String(e);
         bookCreateStatus.set(bookId, { status: "error", error });
         broadcast("book:error", { bookId, error });
@@ -542,28 +564,47 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
   // --- Agent chat ---
 
+  app.get("/api/interaction/session", async (c) => {
+    const session = await loadProjectSession(root);
+    const activeBookId = await resolveSessionActiveBook(root, session);
+    return c.json({
+      session: activeBookId && session.activeBookId !== activeBookId
+        ? { ...session, activeBookId }
+        : session,
+      activeBookId,
+    });
+  });
+
   app.post("/api/agent", async (c) => {
-    const { instruction } = await c.req.json<{ instruction: string }>();
+    const { instruction, activeBookId } = await c.req.json<{ instruction: string; activeBookId?: string }>();
     if (!instruction?.trim()) {
       return c.json({ error: "No instruction provided" }, 400);
     }
 
-    broadcast("agent:start", { instruction });
+    broadcast("agent:start", { instruction, activeBookId });
 
     try {
-      const { runAgentLoop } = await import("@actalk/inkos-core");
+      const pipeline = new PipelineRunner(await buildPipelineConfig());
+      const tools = createInteractionToolsFromDeps(pipeline, state);
+      const result = await processProjectInteractionInput({
+        projectRoot: root,
+        input: instruction,
+        tools,
+        activeBookId,
+      });
+      const response = result.session.messages.at(-1)?.content ?? "Acknowledged.";
 
-      const result = await runAgentLoop(
-        await buildPipelineConfig(),
-        instruction
-      );
-
-      broadcast("agent:complete", { instruction, response: result });
-      return c.json({ response: result });
+      broadcast("agent:complete", { instruction, activeBookId, response });
+      return c.json({ response, session: result.session, request: result.request });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      broadcast("agent:error", { instruction, error: msg });
-      return c.json({ response: msg });
+      broadcast("agent:error", { instruction, activeBookId, error: msg });
+      return c.json({
+        error: {
+          code: "INTERACTION_ERROR",
+          message: msg,
+        },
+      }, 500);
     }
   });
 
@@ -623,19 +664,28 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   app.post("/api/books/:id/revise/:chapter", async (c) => {
     const id = c.req.param("id");
     const chapterNum = parseInt(c.req.param("chapter"), 10);
-    const body: { mode?: string; brief?: string } = await c.req
+    const bookDir = state.bookDir(id);
+    const body = await c.req
       .json<{ mode?: string; brief?: string }>()
-      .catch(() => ({ mode: "spot-fix" }));
+      .catch(() => ({ mode: "spot-fix", brief: undefined }));
 
     broadcast("revise:start", { bookId: id, chapter: chapterNum });
     try {
+      const book = await state.loadBookConfig(id);
+      const chaptersDir = join(bookDir, "chapters");
+      const files = await readdir(chaptersDir);
+      const paddedNum = String(chapterNum).padStart(4, "0");
+      const match = files.find((f) => f.startsWith(paddedNum) && f.endsWith(".md"));
+      if (!match) return c.json({ error: "Chapter not found" }, 404);
+
       const pipeline = new PipelineRunner(await buildPipelineConfig({
         externalContext: body.brief,
       }));
+      const normalizedMode = body.mode ?? "spot-fix";
       const result = await pipeline.reviseDraft(
         id,
         chapterNum,
-        (body.mode ?? "spot-fix") as "spot-fix" | "polish" | "rewrite" | "rework" | "anti-detect",
+        normalizedMode as "polish" | "rewrite" | "rework" | "spot-fix" | "anti-detect",
       );
       broadcast("revise:complete", { bookId: id, chapter: chapterNum });
       return c.json(result);
@@ -716,50 +766,31 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   app.post("/api/books/:id/export-save", async (c) => {
     const id = c.req.param("id");
     const { format, approvedOnly } = await c.req.json<{ format?: string; approvedOnly?: boolean }>().catch(() => ({ format: "txt", approvedOnly: false }));
-    const bookDir = state.bookDir(id);
-    const chaptersDir = join(bookDir, "chapters");
     const fmt = format ?? "txt";
 
     try {
-      const book = await state.loadBookConfig(id);
-      const index = await state.loadChapterIndex(id);
-      const approvedNums = new Set(
-        approvedOnly ? index.filter((ch) => ch.status === "approved").map((ch) => ch.number) : [],
-      );
-
-      const files = await readdir(chaptersDir);
-      const mdFiles = files.filter((f) => f.endsWith(".md") && /^\d{4}/.test(f)).sort();
-      const filteredFiles = approvedOnly
-        ? mdFiles.filter((f) => approvedNums.has(parseInt(f.slice(0, 4), 10)))
-        : mdFiles;
-      const contents = await Promise.all(
-        filteredFiles.map((f) => readFile(join(chaptersDir, f), "utf-8")),
-      );
-
-      const { writeFile: writeFileFs } = await import("node:fs/promises");
-      let outputPath: string;
-      let body: string;
-
-      if (fmt === "md") {
-        body = contents.join("\n\n---\n\n");
-        outputPath = join(bookDir, `${id}.md`);
-      } else if (fmt === "epub") {
-        const chapters = contents.map((content, i) => {
-          const title = content.match(/^#\s+(.+)$/m)?.[1] ?? `Chapter ${i + 1}`;
-          const html = content.split("\n").filter((l) => !l.startsWith("#")).map((l) => l.trim() ? `<p>${l}</p>` : "").join("\n");
-          return { title, html };
-        });
-        const toc = chapters.map((ch, i) => `<li><a href="#ch${i}">${ch.title}</a></li>`).join("\n");
-        const chapterHtml = chapters.map((ch, i) => `<h2 id="ch${i}">${ch.title}</h2>\n${ch.html}`).join("\n<hr/>\n");
-        body = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${book.title}</title><style>body{font-family:serif;max-width:40em;margin:auto;padding:2em;line-height:1.8}h2{margin-top:3em}</style></head><body><h1>${book.title}</h1><nav><ol>${toc}</ol></nav><hr/>${chapterHtml}</body></html>`;
-        outputPath = join(bookDir, `${id}.html`);
-      } else {
-        body = contents.join("\n\n");
-        outputPath = join(bookDir, `${id}.txt`);
-      }
-
-      await writeFileFs(outputPath, body, "utf-8");
-      return c.json({ ok: true, path: outputPath, format: fmt, chapters: filteredFiles.length });
+      const pipeline = new PipelineRunner(await buildPipelineConfig());
+      const tools = createInteractionToolsFromDeps(pipeline, state);
+      const bookDir = state.bookDir(id);
+      const outputPath = join(bookDir, `${id}.${fmt === "epub" ? "epub" : fmt}`);
+      const result = await processProjectInteractionRequest({
+        projectRoot: root,
+        request: {
+          intent: "export_book",
+          bookId: id,
+          format: fmt as "txt" | "md" | "epub",
+          approvedOnly,
+          outputPath,
+        },
+        tools,
+        activeBookId: id,
+      });
+      return c.json({
+        ok: true,
+        path: (result.details?.outputPath as string | undefined) ?? outputPath,
+        format: fmt,
+        chapters: (result.details?.chaptersExported as number | undefined) ?? 0,
+      });
     } catch (e) {
       return c.json({ error: String(e) }, 500);
     }

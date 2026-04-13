@@ -112,7 +112,27 @@ inkos status
    inkos review approve-all
    ```
 
-### Workflow 2.5: Steering Chapter Focus Before Writing
+### Workflow 2.5: Shared Natural-Language Control (Recommended For OpenClaw)
+
+When InkOS is being driven by OpenClaw or another external agent, prefer the shared interaction executor instead of stitching together many ad-hoc CLI calls:
+
+```bash
+inkos interact --json --message "continue the current book, but keep the pacing tighter"
+inkos interact --json --message "rewrite chapter 3"
+inkos interact --json --book my-book --message "switch to auto mode"
+```
+
+This returns a structured payload containing:
+- the routed request
+- assistant response text
+- updated interaction session
+- execution state
+- pending decision
+- recent interaction events
+
+Use this as the primary OpenClaw entry because it shares the same control layer as the project TUI.
+
+### Workflow 2.6: Steering Chapter Focus Before Writing
 
 Use this when the user says things like "pull focus back to the mentor conflict", "pause the merchant guild subplot", or "change what the next chapter should prioritize".
 

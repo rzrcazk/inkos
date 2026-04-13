@@ -68,6 +68,78 @@ export {
 } from "./models/input-governance.js";
 export { PlannerAgent, type PlanChapterInput, type PlanChapterOutput } from "./agents/planner.js";
 export { ComposerAgent, type ComposeChapterInput, type ComposeChapterOutput } from "./agents/composer.js";
+export {
+  AutomationModeSchema,
+  type AutomationMode,
+  normalizeAutomationMode,
+} from "./interaction/modes.js";
+export {
+  InteractionIntentTypeSchema,
+  type InteractionIntentType,
+  InteractionRequestSchema,
+  type InteractionRequest,
+} from "./interaction/intents.js";
+export {
+  ExecutionStatusSchema,
+  ExecutionStateSchema,
+  InteractionEventSchema,
+  type ExecutionStatus,
+  type ExecutionState,
+  type InteractionEvent,
+  isTerminalExecutionStatus,
+} from "./interaction/events.js";
+export {
+  BookCreationDraftSchema,
+  PendingDecisionSchema,
+  InteractionMessageSchema,
+  InteractionSessionSchema,
+  type BookCreationDraft,
+  type PendingDecision,
+  type InteractionMessage,
+  type InteractionSession,
+  bindActiveBook,
+  clearCreationDraft,
+  clearPendingDecision,
+  updateAutomationMode,
+  updateCreationDraft,
+  appendInteractionMessage,
+  appendInteractionEvent,
+} from "./interaction/session.js";
+export {
+  resolveProjectSessionPath,
+  createProjectSession,
+  loadProjectSession,
+  persistProjectSession,
+  resolveSessionActiveBook,
+} from "./interaction/project-session-store.js";
+export { routeInteractionRequest } from "./interaction/request-router.js";
+export {
+  routeNaturalLanguageIntent,
+  type NaturalLanguageRoutingContext,
+} from "./interaction/nl-router.js";
+export {
+  processProjectInteractionInput,
+  processProjectInteractionRequest,
+} from "./interaction/project-control.js";
+export { createInteractionToolsFromDeps } from "./interaction/project-tools.js";
+export {
+  normalizeTruthFileName,
+  classifyTruthAuthority,
+  type TruthAuthority,
+} from "./interaction/truth-authority.js";
+export {
+  executeEditTransaction,
+  planEditTransaction,
+  type EditRequest,
+  type EditExecutionDeps,
+  type ExecutedEditTransaction,
+  type PlannedEditTransaction,
+} from "./interaction/edit-controller.js";
+export {
+  runInteractionRequest,
+  type InteractionRuntimeTools,
+  type InteractionRuntimeResult,
+} from "./interaction/runtime.js";
 
 // LLM
 export { createLLMClient, chatCompletion, chatWithTools, createStreamMonitor, PartialResponseError, type LLMClient, type LLMResponse, type LLMMessage, type ToolDefinition, type ToolCall, type AgentMessage, type ChatWithToolsResult, type StreamProgress, type OnStreamProgress } from "./llm/provider.js";

@@ -42,7 +42,21 @@ clawhub install inkos          # Install from ClawHub
 
 If you installed via npm or cloned the repo, `skills/SKILL.md` is already included — 🦞 can read it directly without a separate ClawHub install.
 
-Once installed, Claw can invoke InkOS atomic commands and control-surface operations (`plan chapter`/`compose chapter`/`draft`/`audit`/`revise`/`write next`) via `exec`, with `--json` output for structured decision-making. The recommended flow is: update `author_intent.md` or `current_focus.md`, run `plan` / `compose`, then decide whether to call `draft` or the full `write next` pipeline. You can also browse it on [ClawHub](https://clawhub.ai) by searching `inkos`.
+Once installed, Claw should prefer the shared interaction entry:
+
+```bash
+inkos interact --json --message "continue the current book, but keep the pacing tighter"
+```
+
+This routes through the same conversation executor used by the project TUI, so OpenClaw, TUI, and Studio stay on the same control brain. The JSON payload includes:
+- parsed request
+- assistant response text
+- updated interaction session
+- execution state
+- pending decision
+- recent events
+
+Atomic commands (`plan chapter` / `compose chapter` / `draft` / `audit` / `revise` / `write next`) are still available, but they are now lower-level tools rather than the preferred OpenClaw entry. You can also browse it on [ClawHub](https://clawhub.ai) by searching `inkos`.
 
 ### Configure
 
