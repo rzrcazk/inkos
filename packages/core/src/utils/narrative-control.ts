@@ -1,4 +1,4 @@
-import type { ChapterBrief, ContextPackage } from "../models/input-governance.js";
+import type { ChapterIntent, ChapterMemo, ContextPackage } from "../models/input-governance.js";
 
 const HOOK_ID_PATTERN = /\bH\d+\b/gi;
 const HOOK_SLUG_PATTERN = /\b[a-z]+(?:-[a-z]+){1,3}\b/g;
@@ -40,68 +40,35 @@ export function sanitizeNarrativeControlText(
 }
 
 /**
- * Render a ChapterBrief into a sanitized narrative control block for the
- * writer / reviser prompt. This replaces the old buildNarrativeIntentBrief
- * path: the brief is the single source of chapter intent.
+ * Render a ChapterMemo + optional ChapterIntent into a sanitized narrative
+ * control block for the writer / reviser prompt. Phase 1 transitional: memo
+ * body is typically empty until Phase 3 fills it with new.txt 7-section prose.
  */
-export function renderBriefAsNarrativeBlock(
-  brief: ChapterBrief,
+export function renderMemoAsNarrativeBlock(
+  memo: ChapterMemo,
+  intent: ChapterIntent | undefined,
   language: "zh" | "en" = "zh",
 ): string {
-  // Sanitize free-text fields only. Enum/identifier fields (chapterType,
-  // beat.phase, hook.movement, hookId) are passed through verbatim to
-  // avoid HOOK_SLUG_PATTERN corrupting hyphenated values like
-  // "knife-twist", "partial-payoff", "golden-opening".
   const s = (text: string) => sanitizeNarrativeControlText(text, language);
   const isEn = language === "en";
-
   const sections: string[] = [];
 
-  // Goal — free text, sanitize
-  sections.push(`## ${isEn ? "Goal" : "目标"}\n- ${s(brief.goal)}`);
+  sections.push(`## ${isEn ? "Goal" : "目标"}\n- ${s(memo.goal)}`);
 
-  // Chapter type — enum value, do NOT sanitize
-  sections.push(`## ${isEn ? "Chapter Type" : "章节类型"}\n- ${brief.chapterType}`);
-
-  // Beat outline — phase is enum, instruction is free text
-  if (brief.beatOutline.length > 0) {
-    const beats = brief.beatOutline
-      .map((beat) => `- ${beat.phase}: ${s(beat.instruction)}`)
-      .join("\n");
-    sections.push(`## ${isEn ? "Beat Outline" : "节拍大纲"}\n${beats}`);
+  if (intent?.arcContext) {
+    sections.push(`## ${isEn ? "Arc Context" : "弧线背景"}\n- ${s(intent.arcContext)}`);
   }
 
-  // Hook plan — hookId and movement are identifiers, targetEffect is free text
-  if (brief.hookPlan.length > 0) {
-    const hooks = brief.hookPlan
-      .map((hook) => `- ${hook.hookId} | ${hook.movement} | ${s(hook.targetEffect)}`)
-      .join("\n");
-    sections.push(`## ${isEn ? "Hook Plan" : "伏笔计划"}\n${hooks}`);
+  if (memo.body.trim().length > 0) {
+    sections.push(`## ${isEn ? "Memo" : "本章备忘"}\n${s(memo.body)}`);
   }
 
-  // Dormant reason — free text, sanitize
-  if (brief.dormantReason) {
-    sections.push(
-      `## ${isEn ? "Dormant Hooks" : "按兵不动的伏笔"}\n- ${s(brief.dormantReason)}`,
-    );
+  if (memo.hookRefs.length > 0) {
+    const hooks = memo.hookRefs.map((hook) => `- ${hook}`).join("\n");
+    sections.push(`## ${isEn ? "Hook Refs" : "关联伏笔"}\n${hooks}`);
   }
 
-  // Props and setting — proper nouns, do NOT sanitize
-  if (brief.propsAndSetting.length > 0) {
-    sections.push(
-      `## ${isEn ? "Props & Setting" : "道具与场景"}\n- ${brief.propsAndSetting.join(", ")}`,
-    );
-  }
-
-  // Cycle phase
-  if (brief.cyclePhase) {
-    sections.push(
-      `## ${isEn ? "Cycle Phase" : "周期阶段"}\n- ${brief.cyclePhase}`,
-    );
-  }
-
-  // Golden opening flag
-  if (brief.isGoldenOpening) {
+  if (memo.isGoldenOpening) {
     sections.push(
       `## ${isEn ? "Golden Opening" : "黄金开场"}\n- ${isEn ? "This is a golden opening chapter — prioritize hook-dense, high-tempo pacing." : "本章是黄金开场章——优先钩子密集、高节奏。"}`,
     );

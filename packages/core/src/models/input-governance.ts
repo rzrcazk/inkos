@@ -1,123 +1,23 @@
 import { z } from "zod";
-import { HookPayoffTimingSchema } from "./runtime-state.js";
 
-export const ChapterConflictSchema = z.object({
-  type: z.string().min(1),
-  resolution: z.string().min(1),
-  detail: z.string().optional(),
-});
-
-export type ChapterConflict = z.infer<typeof ChapterConflictSchema>;
-
-export const HookPressurePhaseSchema = z.enum(["opening", "middle", "late"]);
-export type HookPressurePhase = z.infer<typeof HookPressurePhaseSchema>;
-
-export const HookMovementSchema = z.enum([
-  "quiet-hold",
-  "refresh",
-  "advance",
-  "partial-payoff",
-  "full-payoff",
-]);
-export type HookMovement = z.infer<typeof HookMovementSchema>;
-
-export const HookPressureLevelSchema = z.enum(["low", "medium", "high", "critical"]);
-export type HookPressureLevel = z.infer<typeof HookPressureLevelSchema>;
-
-export const HookPressureReasonSchema = z.enum([
-  "fresh-promise",
-  "building-debt",
-  "stale-promise",
-  "ripe-payoff",
-  "overdue-payoff",
-  "long-arc-hold",
-]);
-export type HookPressureReason = z.infer<typeof HookPressureReasonSchema>;
-
-export const HookPressureSchema = z.object({
-  hookId: z.string().min(1),
-  type: z.string().min(1),
-  movement: HookMovementSchema,
-  pressure: HookPressureLevelSchema,
-  payoffTiming: HookPayoffTimingSchema.optional(),
-  phase: HookPressurePhaseSchema,
-  reason: HookPressureReasonSchema,
-  blockSiblingHooks: z.boolean().default(false),
-});
-
-export type HookPressure = z.infer<typeof HookPressureSchema>;
-
-export const HookAgendaSchema = z.object({
-  pressureMap: z.array(HookPressureSchema).default([]),
-  mustAdvance: z.array(z.string().min(1)).default([]),
-  eligibleResolve: z.array(z.string().min(1)).default([]),
-  staleDebt: z.array(z.string().min(1)).default([]),
-  avoidNewHookFamilies: z.array(z.string().min(1)).default([]),
-});
-
-export type HookAgenda = z.infer<typeof HookAgendaSchema>;
-
-export const ChapterBeatPhaseSchema = z.enum([
-  "opening",
-  "development",
-  "reversal",
-  "payoff",
-  "hook",
-]);
-export type ChapterBeatPhase = z.infer<typeof ChapterBeatPhaseSchema>;
-
-export const ChapterBeatSchema = z.object({
-  phase: ChapterBeatPhaseSchema,
-  instruction: z.string().min(1),
-});
-export type ChapterBeat = z.infer<typeof ChapterBeatSchema>;
-
-export const ChapterHookMoveSchema = z.object({
-  hookId: z.string().min(1),
-  movement: HookMovementSchema,
-  targetEffect: z.string().min(1),
-});
-export type ChapterHookMove = z.infer<typeof ChapterHookMoveSchema>;
-
-export const CyclePhaseSchema = z.enum([
-  "蓄压", "升级", "爆发", "后效",
-  "build-up", "escalation", "climax", "aftermath",
-]);
-export type CyclePhase = z.infer<typeof CyclePhaseSchema>;
-
-export const ChapterBriefSchema = z.object({
+export const ChapterMemoSchema = z.object({
   chapter: z.number().int().min(1),
   goal: z.string().min(1),
-  chapterType: z.string().min(1),
-  cyclePhase: CyclePhaseSchema.optional(),
   isGoldenOpening: z.boolean().default(false),
-  beatOutline: z.array(ChapterBeatSchema).min(1),
-  hookPlan: z.array(ChapterHookMoveSchema).default([]),
-  dormantReason: z.string().optional(),
-  propsAndSetting: z.array(z.string().min(1)).default([]),
+  body: z.string(),
+  hookRefs: z.array(z.string()).default([]),
 });
 
-export type ChapterBrief = z.infer<typeof ChapterBriefSchema>;
+export type ChapterMemo = z.infer<typeof ChapterMemoSchema>;
 
 export const ChapterIntentSchema = z.object({
   chapter: z.number().int().min(1),
   goal: z.string().min(1),
   outlineNode: z.string().optional(),
-  sceneDirective: z.string().min(1).optional(),
-  arcDirective: z.string().min(1).optional(),
-  moodDirective: z.string().min(1).optional(),
-  titleDirective: z.string().min(1).optional(),
+  arcContext: z.string().optional(),
   mustKeep: z.array(z.string()).default([]),
   mustAvoid: z.array(z.string()).default([]),
   styleEmphasis: z.array(z.string()).default([]),
-  conflicts: z.array(ChapterConflictSchema).default([]),
-  hookAgenda: HookAgendaSchema.default({
-    pressureMap: [],
-    mustAdvance: [],
-    eligibleResolve: [],
-    staleDebt: [],
-    avoidNewHookFamilies: [],
-  }),
 });
 
 export type ChapterIntent = z.infer<typeof ChapterIntentSchema>;

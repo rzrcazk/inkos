@@ -66,31 +66,13 @@ describe("ComposerAgent", () => {
         ],
         mustAvoid: ["Do not reveal the mastermind."],
         styleEmphasis: ["character conflict", "tight POV"],
-        conflicts: [
-          {
-            type: "outline_vs_request",
-            resolution: "allow local outline deferral",
-          },
-        ],
-        hookAgenda: {
-          pressureMap: [],
-          mustAdvance: [],
-          eligibleResolve: [],
-          staleDebt: [],
-          avoidNewHookFamilies: [],
-        },
       },
-      brief: {
+      memo: {
         chapter: 4,
         goal: "Bring the focus back to the mentor conflict.",
-        chapterType: "confrontation",
         isGoldenOpening: false,
-        beatOutline: [
-          { phase: "opening", instruction: "Open inside the mentor argument." },
-          { phase: "development", instruction: "Bring the oath token back into the scene." },
-        ],
-        hookPlan: [],
-        propsAndSetting: ["broken oath token"],
+        body: "",
+        hookRefs: [],
       },
       intentMarkdown: "# Chapter Intent\n",
       plannerInputs: [
@@ -125,7 +107,7 @@ describe("ComposerAgent", () => {
 
     const selectedSources = result.contextPackage.selectedContext.map((entry) => entry.source);
     expect(selectedSources.slice(0, 5)).toEqual([
-      "runtime/chapter_brief",
+      "runtime/chapter_memo",
       "story/current_focus.md",
       "story/current_state.md",
       "story/story_bible.md",
@@ -154,7 +136,8 @@ describe("ComposerAgent", () => {
     expect(result.ruleStack.sections.hard).toContain("story_bible");
     expect(result.ruleStack.sections.soft).toContain("author_intent");
     expect(result.ruleStack.sections.diagnostic).toContain("anti_ai_checks");
-    expect(result.ruleStack.activeOverrides).toHaveLength(1);
+    // activeOverrides dropped with ChapterConflict removal (Phase 1 transitional)
+    expect(result.ruleStack.activeOverrides).toEqual([]);
   });
 
   it("writes trace output describing planner inputs and selected sources", async () => {
@@ -174,8 +157,9 @@ describe("ComposerAgent", () => {
 
     expect(result.trace.plannerInputs).toEqual(plan.plannerInputs);
     expect(result.trace.selectedSources).toContain("story/current_focus.md");
-    expect(result.trace.notes).toContain("allow local outline deferral");
-    await expect(readFile(result.tracePath, "utf-8")).resolves.toContain("allow local outline deferral");
+    // trace.notes dropped with ChapterConflict removal (Phase 1 transitional)
+    expect(result.trace.notes).toEqual([]);
+    await expect(readFile(result.tracePath, "utf-8")).resolves.toContain("story/current_focus.md");
   });
 
   it("retrieves summary and hook evidence chunks instead of whole long memory files", async () => {
@@ -553,22 +537,12 @@ describe("ComposerAgent", () => {
           ...plan.intent,
           chapter: 10,
           goal: "Bring the focus back to the mentor oath conflict.",
-          hookAgenda: {
-            pressureMap: [{
-              hookId: "mentor-oath",
-              type: "relationship",
-              payoffTiming: "slow-burn",
-              phase: "middle",
-              pressure: "high",
-              movement: "partial-payoff",
-              reason: "stale-promise",
-              blockSiblingHooks: true,
-            }],
-            mustAdvance: ["mentor-oath"],
-            eligibleResolve: [],
-            staleDebt: [],
-            avoidNewHookFamilies: ["relationship"],
-          },
+        },
+        memo: {
+          ...plan.memo,
+          chapter: 10,
+          goal: "Bring the focus back to the mentor oath conflict.",
+          hookRefs: ["mentor-oath"],
         },
       },
     });
@@ -576,13 +550,13 @@ describe("ComposerAgent", () => {
     const hookDebtEntry = result.contextPackage.selectedContext.find((entry) => entry.source === "runtime/hook_debt#mentor-oath");
     expect(hookDebtEntry).toBeDefined();
     expect(hookDebtEntry?.excerpt).toContain("mentor-oath");
-    expect(hookDebtEntry?.excerpt).toContain("主要旧债");
+    expect(hookDebtEntry?.excerpt).toContain("备忘引用旧债");
     expect(hookDebtEntry?.excerpt).toContain("读者承诺");
     expect(hookDebtEntry?.excerpt).toContain("River Camp");
     expect(hookDebtEntry?.excerpt).toContain("Trial Echo");
   });
 
-  it("includes brief-selected hook ids in hook debt retrieval even before hookAgenda is updated", async () => {
+  it("includes memo-referenced hook ids in hook debt retrieval", async () => {
     await Promise.all([
       writeFile(
         join(storyDir, "pending_hooks.md"),
@@ -627,30 +601,12 @@ describe("ComposerAgent", () => {
           chapter: 8,
           goal: "Follow the black ring pressure.",
           mustKeep: [],
-          hookAgenda: {
-            pressureMap: [],
-            mustAdvance: [],
-            eligibleResolve: [],
-            staleDebt: [],
-            avoidNewHookFamilies: [],
-          },
         },
-        brief: {
+        memo: {
+          ...plan.memo,
           chapter: 8,
           goal: "Follow the black ring pressure.",
-          chapterType: "pursuit",
-          isGoldenOpening: false,
-          beatOutline: [
-            { phase: "opening", instruction: "Open with the ring clue already in motion." },
-          ],
-          hookPlan: [
-            {
-              hookId: "black-ring",
-              movement: "advance",
-              targetEffect: "Push the ring clue onto the dock in a way the reader can feel.",
-            },
-          ],
-          propsAndSetting: ["wet dock", "black ring"],
+          hookRefs: ["black-ring"],
         },
       },
     });

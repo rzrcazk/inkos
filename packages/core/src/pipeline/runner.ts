@@ -728,7 +728,7 @@ export class PipelineRunner {
       chapterNumber,
       intentPath: relativeToBookDir(bookDir, plan.runtimePath),
       goal: plan.intent.goal,
-      conflicts: plan.intent.conflicts.map((conflict) => `${conflict.type}: ${conflict.resolution}`),
+      conflicts: [],
     };
   }
 
@@ -752,7 +752,7 @@ export class PipelineRunner {
       chapterNumber,
       intentPath: relativeToBookDir(bookDir, plan.runtimePath),
       goal: plan.intent.goal,
-      conflicts: plan.intent.conflicts.map((conflict) => `${conflict.type}: ${conflict.resolution}`),
+      conflicts: [],
       contextPath: relativeToBookDir(bookDir, composed.contextPath),
       ruleStackPath: relativeToBookDir(bookDir, composed.ruleStackPath),
       tracePath: relativeToBookDir(bookDir, composed.tracePath),
@@ -908,7 +908,8 @@ export class PipelineRunner {
         reviseControlInput
           ? {
               chapterIntent: reviseControlInput.plan.intentMarkdown,
-              chapterBrief: reviseControlInput.plan.brief,
+              chapterMemo: reviseControlInput.plan.memo,
+              chapterIntentData: reviseControlInput.plan.intent,
               contextPackage: reviseControlInput.composed.contextPackage,
               ruleStack: reviseControlInput.composed.ruleStack,
               lengthSpec,
@@ -1169,7 +1170,8 @@ export class PipelineRunner {
     const reducedControlInput = writeInput.chapterIntent && writeInput.contextPackage && writeInput.ruleStack
       ? {
           chapterIntent: writeInput.chapterIntent,
-          chapterBrief: writeInput.chapterBrief,
+          chapterMemo: writeInput.chapterMemo,
+          chapterIntentData: writeInput.chapterIntentData,
           contextPackage: writeInput.contextPackage,
           ruleStack: writeInput.ruleStack,
         }
@@ -2068,7 +2070,7 @@ ${matrix}`,
     bookDir: string,
     chapterNumber: number,
     externalContext?: string,
-  ): Promise<Pick<WriteChapterInput, "externalContext" | "chapterIntent" | "chapterBrief" | "moodDirective" | "titleDirective" | "contextPackage" | "ruleStack" | "trace">> {
+  ): Promise<Pick<WriteChapterInput, "externalContext" | "chapterIntent" | "chapterMemo" | "chapterIntentData" | "contextPackage" | "ruleStack" | "trace">> {
     if ((this.config.inputGovernanceMode ?? "v2") === "legacy") {
       return { externalContext };
     }
@@ -2083,9 +2085,8 @@ ${matrix}`,
 
     return {
       chapterIntent: plan.intentMarkdown,
-      chapterBrief: plan.brief,
-      moodDirective: plan.intent.moodDirective,
-      titleDirective: plan.intent.titleDirective,
+      chapterMemo: plan.memo,
+      chapterIntentData: plan.intent,
       contextPackage: composed.contextPackage,
       ruleStack: composed.ruleStack,
       trace: composed.trace,

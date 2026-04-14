@@ -1,7 +1,7 @@
 import type { AuditIssue, AuditResult } from "../agents/continuity.js";
 import type { ReviseMode, ReviseOutput } from "../agents/reviser.js";
 import type { WriteChapterOutput } from "../agents/writer.js";
-import type { ChapterBrief, ContextPackage, RuleStack } from "../models/input-governance.js";
+import type { ChapterIntent, ChapterMemo, ContextPackage, RuleStack } from "../models/input-governance.js";
 import type { LengthSpec } from "../models/length-governance.js";
 import { countChapterLength, isOutsideSoftRange } from "../utils/length-metrics.js";
 
@@ -13,7 +13,8 @@ export interface ChapterReviewCycleUsage {
 
 export interface ChapterReviewCycleControlInput {
   readonly chapterIntent: string;
-  readonly chapterBrief?: ChapterBrief;
+  readonly chapterMemo?: ChapterMemo;
+  readonly chapterIntentData?: ChapterIntent;
   readonly contextPackage: ContextPackage;
   readonly ruleStack: RuleStack;
 }
@@ -58,7 +59,8 @@ export async function runChapterReviewCycle(params: {
       genre?: string,
       options?: {
         chapterIntent?: string;
-        chapterBrief?: ChapterBrief;
+        chapterMemo?: ChapterMemo;
+        chapterIntentData?: ChapterIntent;
         contextPackage?: ContextPackage;
         ruleStack?: RuleStack;
         lengthSpec?: LengthSpec;

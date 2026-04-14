@@ -901,14 +901,12 @@ describe("WriterAgent", () => {
         },
         bookDir,
         chapterNumber: 4,
-        chapterBrief: {
+        chapterMemo: {
           chapter: 4,
           goal: "Force Mara back toward the ledger trail.",
-          chapterType: "confrontation",
           isGoldenOpening: false,
-          beatOutline: [{ phase: "opening" as const, instruction: "Open with tension at the archive window." }],
-          hookPlan: [{ hookId: "ledger-fragment", movement: "advance" as const, targetEffect: "Mara is forced to confront the ledger." }],
-          propsAndSetting: ["archive window"],
+          body: "",
+          hookRefs: ["ledger-fragment"],
         },
         contextPackage: {
           chapter: 4,
@@ -1033,14 +1031,12 @@ describe("WriterAgent", () => {
         },
         bookDir,
         chapterNumber: 4,
-        chapterBrief: {
+        chapterMemo: {
           chapter: 4,
           goal: "Push Mara back toward the archive ledger.",
-          chapterType: "confrontation",
           isGoldenOpening: false,
-          beatOutline: [{ phase: "opening" as const, instruction: "Open with tension at the archive." }],
-          hookPlan: [{ hookId: "ledger-fragment", movement: "advance" as const, targetEffect: "Mara is forced to confront the ledger." }],
-          propsAndSetting: ["archive"],
+          body: "",
+          hookRefs: ["ledger-fragment"],
         },
         contextPackage: {
           chapter: 4,
@@ -1184,17 +1180,12 @@ describe("WriterAgent", () => {
         },
         bookDir,
         chapterNumber: 4,
-        chapterBrief: {
+        chapterMemo: {
           chapter: 4,
           goal: "Push Mara back toward the archive ledger.",
-          chapterType: "confrontation",
           isGoldenOpening: false,
-          beatOutline: [{ phase: "opening" as const, instruction: "本章要做的是推进 ledger-fragment tension at the archive." }],
-          hookPlan: [
-            { hookId: "mentor-oath", movement: "advance" as const, targetEffect: "Advance the oath debt with H001 ledger-fragment callback." },
-            { hookId: "ledger-fragment", movement: "partial-payoff" as const, targetEffect: "Partially resolve stale-ledger." },
-          ],
-          propsAndSetting: ["archive"],
+          body: "本章要做的是推进 ledger-fragment tension at the archive.",
+          hookRefs: ["mentor-oath", "ledger-fragment"],
         },
         contextPackage: {
           chapter: 4,

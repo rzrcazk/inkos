@@ -66,14 +66,12 @@ describe("agent pipeline tools", () => {
           goal = overrideMatch[1].trim();
         }
       } catch { /* ignore missing file */ }
-      const brief = {
+      const memo = {
         chapter: chapterNumber,
         goal,
-        chapterType: "推进" as const,
         isGoldenOpening: false,
-        beatOutline: [{ phase: "opening" as const, instruction: "test" }],
-        hookPlan: [] as Array<{ hookId: string; movement: "quiet-hold" | "refresh" | "advance" | "partial-payoff" | "full-payoff"; targetEffect: string }>,
-        propsAndSetting: [] as string[],
+        body: "",
+        hookRefs: [] as string[],
       };
       const intentMarkdown = [
         "# Chapter Intent",
@@ -93,16 +91,8 @@ describe("agent pipeline tools", () => {
           mustKeep: [],
           mustAvoid: [],
           styleEmphasis: [],
-          conflicts: [],
-          hookAgenda: {
-            pressureMap: [],
-            mustAdvance: [],
-            eligibleResolve: [],
-            staleDebt: [],
-            avoidNewHookFamilies: [],
-          },
         },
-        brief,
+        memo,
         intentMarkdown,
         plannerInputs: [runtimePath],
         runtimePath,

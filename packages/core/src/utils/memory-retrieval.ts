@@ -8,11 +8,10 @@ import {
 import { MemoryDB, type Fact, type StoredHook, type StoredSummary } from "../state/memory-db.js";
 import { bootstrapStructuredStateFromMarkdown } from "../state/state-bootstrap.js";
 import {
-  buildPlannerHookAgenda,
   filterActiveHooks,
   isFuturePlannedHook,
   isHookWithinChapterWindow,
-} from "./hook-agenda.js";
+} from "./hook-lifecycle.js";
 import {
   parseChapterSummariesMarkdown,
   parseCurrentStateFacts,
@@ -21,10 +20,9 @@ import {
   renderSummarySnapshot,
 } from "./story-markdown.js";
 export {
-  buildPlannerHookAgenda,
   isFuturePlannedHook,
   isHookWithinChapterWindow,
-} from "./hook-agenda.js";
+} from "./hook-lifecycle.js";
 export {
   parseChapterSummariesMarkdown,
   parseCurrentStateFacts,

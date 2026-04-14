@@ -95,17 +95,22 @@ async function collectSelectedContext(
   language: "zh" | "en",
 ): Promise<ContextPackage["selectedContext"]> {
     const retrievalHints = deriveRetrievalHints(plan);
-    const chapterBriefEntry = [{
-      source: "runtime/chapter_brief",
-      reason: "Carry the planner's concrete chapter execution brief directly into governed writing.",
-      excerpt: [
-        `type=${plan.brief.chapterType}`,
-        ...plan.brief.beatOutline.map((beat) => `${beat.phase}: ${beat.instruction}`),
-        ...(plan.brief.propsAndSetting.length > 0
-          ? [`props=${plan.brief.propsAndSetting.join(", ")}`]
-          : []),
-      ].join(" | "),
-    }];
+    const memoBodyExcerpt = plan.memo.body.trim();
+    const chapterMemoEntry = memoBodyExcerpt.length > 0
+      ? [{
+          source: "runtime/chapter_memo",
+          reason: "Carry the planner's chapter memo into governed writing.",
+          excerpt: [
+            `goal=${plan.memo.goal}`,
+            plan.memo.isGoldenOpening ? "golden-opening=true" : undefined,
+            memoBodyExcerpt,
+          ].filter(Boolean).join(" | "),
+        }]
+      : [{
+          source: "runtime/chapter_memo",
+          reason: "Carry the planner's chapter memo into governed writing.",
+          excerpt: `goal=${plan.memo.goal}`,
+        }];
 
     const entries = await Promise.all([
       maybeContextSource(storyDir, "current_focus.md", "Current task focus for this chapter."),
@@ -145,12 +150,11 @@ async function collectSelectedContext(
     ]);
     const trailEntries = await buildRecentChapterTrailEntries(storyDir, plan.intent.chapter);
 
-    const planningAnchor = plan.intent.conflicts.length > 0 ? undefined : plan.intent.outlineNode;
     const memorySelection = await retrieveMemorySelection({
       bookDir: dirname(storyDir),
       chapterNumber: plan.intent.chapter,
       goal: plan.intent.goal,
-      outlineNode: planningAnchor,
+      outlineNode: plan.intent.outlineNode,
       mustKeep: retrievalHints,
     });
     const hookDebtEntries = await buildHookDebtEntries(
@@ -186,7 +190,7 @@ async function collectSelectedContext(
     }));
 
     return [
-      ...chapterBriefEntry,
+      ...chapterMemoEntry,
       ...entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null),
       ...trailEntries,
       ...hookDebtEntries,
@@ -199,10 +203,10 @@ async function collectSelectedContext(
 
 function deriveRetrievalHints(plan: PlanChapterOutput): string[] {
   return [
-    ...plan.brief.propsAndSetting,
-    ...plan.brief.hookPlan.flatMap((entry) => [entry.hookId, entry.targetEffect]),
-    plan.brief.goal,
-  ].filter(Boolean);
+    plan.intent.goal,
+    plan.intent.outlineNode,
+    ...plan.memo.hookRefs,
+  ].filter((value): value is string => Boolean(value));
 }
 
 async function buildRecentChapterTrailEntries(
@@ -311,15 +315,7 @@ async function buildHookDebtEntries(
     }>,
   language: "zh" | "en",
 ): Promise<ContextPackage["selectedContext"]> {
-    const targetHookIds = [
-      ...new Set([
-        ...plan.brief.hookPlan.map((entry) => entry.hookId),
-        ...plan.intent.hookAgenda.pressureMap.map((entry) => entry.hookId),
-        ...plan.intent.hookAgenda.eligibleResolve,
-        ...plan.intent.hookAgenda.mustAdvance,
-        ...plan.intent.hookAgenda.staleDebt,
-      ]),
-    ];
+    const targetHookIds = [...new Set(plan.memo.hookRefs)];
     if (targetHookIds.length === 0) {
       return [];
     }
@@ -336,7 +332,7 @@ async function buildHookDebtEntries(
 
       const seedSummary = findHookSummary(summaries, hook.hookId, hook.startChapter, "seed");
       const latestSummary = findHookSummary(summaries, hook.hookId, hook.lastAdvancedChapter, "latest");
-      const role = describeHookAgendaRole(plan, hook.hookId, language);
+      const role = language === "en" ? "memo-referenced debt" : "备忘引用旧债";
       const promise = hook.expectedPayoff || (language === "en" ? "(unspecified)" : "（未写明）");
       const seedBeat = seedSummary
         ? renderHookDebtBeat(seedSummary)
@@ -411,20 +407,6 @@ async function readFileOrDefault(path: string): Promise<string> {
   } catch {
     return "(文件尚未创建)";
   }
-}
-
-function describeHookAgendaRole(
-  plan: PlanChapterOutput,
-  hookId: string,
-  language: "zh" | "en",
-): string {
-  if (plan.intent.hookAgenda.eligibleResolve.includes(hookId)) {
-    return language === "en" ? "payoff-ready debt" : "可兑现旧债";
-  }
-  if (plan.intent.hookAgenda.staleDebt.includes(hookId)) {
-    return language === "en" ? "high-pressure debt" : "高压旧债";
-  }
-  return language === "en" ? "mainline debt" : "主要旧债";
 }
 
 function findHookSummary(

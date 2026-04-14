@@ -204,14 +204,12 @@ describe("PipelineRunner", () => {
     vi.spyOn(PlannerAgent.prototype, "planChapter").mockImplementation(async (input) => {
       const chapterNumber = input.chapterNumber;
       const goal = input.externalContext ?? "test goal";
-      const brief = {
+      const memo = {
         chapter: chapterNumber,
         goal,
-        chapterType: "推进" as const,
         isGoldenOpening: false,
-        beatOutline: [{ phase: "opening" as const, instruction: "test" }],
-        hookPlan: [] as Array<{ hookId: string; movement: "quiet-hold" | "refresh" | "advance" | "partial-payoff" | "full-payoff"; targetEffect: string }>,
-        propsAndSetting: [] as string[],
+        body: "",
+        hookRefs: [] as string[],
       };
       const intentMarkdown = [
         "# Chapter Intent",
@@ -231,22 +229,6 @@ describe("PipelineRunner", () => {
         "## Style Emphasis",
         "- none",
         "",
-        "## Conflicts",
-        "- none",
-        "",
-        "## Chapter Brief",
-        `- chapterType: ${brief.chapterType}`,
-        `- isGoldenOpening: ${brief.isGoldenOpening}`,
-        "",
-        "### Beat Outline",
-        "- opening: test",
-        "",
-        "### Hook Plan",
-        "- none",
-        "",
-        "### Props And Setting",
-        "- none",
-        "",
       ].join("\n");
       const runtimeDir = join(input.bookDir, "story", "runtime");
       const { mkdir: mkdirFs, writeFile: writeFileFs } = await import("node:fs/promises");
@@ -260,16 +242,8 @@ describe("PipelineRunner", () => {
           mustKeep: [],
           mustAvoid: [],
           styleEmphasis: [],
-          conflicts: [],
-          hookAgenda: {
-            pressureMap: [],
-            mustAdvance: [],
-            eligibleResolve: [],
-            staleDebt: [],
-            avoidNewHookFamilies: [],
-          },
         },
-        brief,
+        memo,
         intentMarkdown,
         plannerInputs: [runtimePath],
         runtimePath,
@@ -603,14 +577,12 @@ describe("PipelineRunner", () => {
       const runtimeDir = join(input.bookDir, "story", "runtime");
       await mkdir(runtimeDir, { recursive: true });
       const goal = "Ignore the guild chase and bring focus back to mentor conflict.";
-      const brief = {
+      const memo = {
         chapter: input.chapterNumber,
         goal,
-        chapterType: "confrontation" as const,
         isGoldenOpening: true,
-        beatOutline: [{ phase: "opening" as const, instruction: "Open on the conflict." }],
-        hookPlan: [] as Array<{ hookId: string; movement: "quiet-hold" | "refresh" | "advance" | "partial-payoff" | "full-payoff"; targetEffect: string }>,
-        propsAndSetting: ["broken oath token"],
+        body: "",
+        hookRefs: [] as string[],
       };
       const intentMarkdown = [
         "# Chapter Intent",
@@ -657,16 +629,8 @@ describe("PipelineRunner", () => {
           mustKeep: ["Lin Yue still hides the broken oath token."],
           mustAvoid: [],
           styleEmphasis: [],
-          conflicts: [{ type: "outline_vs_request", resolution: "allow local outline deferral" }],
-          hookAgenda: {
-            pressureMap: [],
-            mustAdvance: [],
-            eligibleResolve: [],
-            staleDebt: [],
-            avoidNewHookFamilies: [],
-          },
         },
-        brief,
+        memo,
         intentMarkdown,
         plannerInputs: [runtimePath],
         runtimePath,
@@ -690,11 +654,10 @@ describe("PipelineRunner", () => {
       const writeInput = writeChapter.mock.calls[0]?.[0];
       expect(writeInput?.externalContext).toBeUndefined();
       expect(writeInput?.chapterIntent).toContain("# Chapter Intent");
-      expect(writeInput?.chapterBrief).toEqual(expect.objectContaining({
+      expect(writeInput?.chapterMemo).toEqual(expect.objectContaining({
         chapter: 1,
       }));
       expect(writeInput?.contextPackage?.selectedContext.length).toBeGreaterThan(0);
-      expect(writeInput?.ruleStack?.activeOverrides).toHaveLength(1);
 
       const runtimeDir = join(state.bookDir(bookId), "story", "runtime");
       await expect(stat(join(runtimeDir, "chapter-0001.intent.md"))).resolves.toBeTruthy();
@@ -777,10 +740,10 @@ describe("PipelineRunner", () => {
     try {
       await runner.writeDraft(bookId);
 
-      expect(planChapter).not.toHaveBeenCalled();
+      // Phase 1: persisted plans disabled, planner is always invoked.
+      expect(planChapter).toHaveBeenCalledTimes(1);
       const writeInput = writeChapter.mock.calls[0]?.[0];
-      expect(writeInput?.chapterIntent).toContain("Bring the focus back to the mentor conflict.");
-      expect(writeInput?.ruleStack?.activeOverrides).toHaveLength(1);
+      expect(writeInput?.chapterIntent).toBeDefined();
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -1288,16 +1251,12 @@ describe("PipelineRunner", () => {
       const result = await originalPlanChapter.call(this, input);
       return {
         ...result,
-        brief: {
+        memo: {
           chapter: input.chapterNumber,
           goal: result.intent.goal,
-          chapterType: "confrontation",
           isGoldenOpening: true,
-          beatOutline: [
-            { phase: "opening", instruction: "Open on the conflict." },
-          ],
-          hookPlan: [],
-          propsAndSetting: ["broken oath token"],
+          body: "",
+          hookRefs: [],
         },
       };
     });
@@ -1324,7 +1283,7 @@ describe("PipelineRunner", () => {
       expect(composeChapter).toHaveBeenCalledTimes(1);
       const writeInput = writeChapter.mock.calls[0]?.[0];
       expect(writeInput?.chapterIntent).toContain("# Chapter Intent");
-      expect(writeInput?.chapterBrief).toEqual(expect.objectContaining({
+      expect(writeInput?.chapterMemo).toEqual(expect.objectContaining({
         chapter: 1,
       }));
       expect(writeInput?.contextPackage?.selectedContext.length).toBeGreaterThan(0);
@@ -1435,17 +1394,13 @@ describe("PipelineRunner", () => {
           mustKeep: [],
           mustAvoid: [],
           styleEmphasis: [],
-          conflicts: [],
-          hookAgenda: { pressureMap: [], mustAdvance: [], eligibleResolve: [], staleDebt: [], avoidNewHookFamilies: [] },
         },
-        brief: {
+        memo: {
           chapter: input.chapterNumber,
           goal,
-          chapterType: "推进",
           isGoldenOpening: false,
-          beatOutline: [{ phase: "opening" as const, instruction: "test" }],
-          hookPlan: [],
-          propsAndSetting: [],
+          body: "",
+          hookRefs: [],
         },
         intentMarkdown: intentMd,
         plannerInputs: [runtimePath],

@@ -3,7 +3,7 @@ import type { GenreProfile } from "../models/genre-profile.js";
 import type { BookRules } from "../models/book-rules.js";
 import type { LengthSpec } from "../models/length-governance.js";
 import type { AuditIssue } from "./continuity.js";
-import type { ChapterBrief, ContextPackage, RuleStack } from "../models/input-governance.js";
+import type { ChapterIntent, ChapterMemo, ContextPackage, RuleStack } from "../models/input-governance.js";
 import { readGenreProfile, readBookLanguage, readBookRules } from "./rules-reader.js";
 import { countChapterLength } from "../utils/length-metrics.js";
 import { buildGovernedMemoryEvidenceBlocks } from "../utils/governed-context.js";
@@ -16,7 +16,7 @@ import {
 import { applySpotFixPatches, parseSpotFixPatches } from "../utils/spot-fix-patches.js";
 import {
   buildNarrativeIntentBrief,
-  renderBriefAsNarrativeBlock,
+  renderMemoAsNarrativeBlock,
   renderNarrativeSelectedContext,
   sanitizeNarrativeEvidenceBlock,
 } from "../utils/narrative-control.js";
@@ -116,7 +116,8 @@ export class ReviserAgent extends BaseAgent {
     genre?: string,
     options?: {
       chapterIntent?: string;
-      chapterBrief?: ChapterBrief;
+      chapterMemo?: ChapterMemo;
+      chapterIntentData?: ChapterIntent;
       contextPackage?: ContextPackage;
       ruleStack?: RuleStack;
       lengthSpec?: LengthSpec;
@@ -238,7 +239,7 @@ export class ReviserAgent extends BaseAgent {
       ? `\n## 同人正典参照（修稿专用）\n本书为同人作品。修改时参照正典角色档案和世界规则，不可违反正典事实。角色对话必须保留原作语癖。\n${fanficCanon}\n`
       : "";
     const reducedControlBlock = options?.contextPackage && options.ruleStack
-      ? this.buildReducedControlBlock(options.chapterBrief, options.chapterIntent, options.contextPackage, options.ruleStack)
+      ? this.buildReducedControlBlock(options.chapterMemo, options.chapterIntentData, options.chapterIntent, options.contextPackage, options.ruleStack)
       : "";
     // Length guardrail only in legacy modes — auto mode delegates length to normalize.
     const lengthGuidanceBlock = mode !== "auto" && options?.lengthSpec
@@ -554,7 +555,8 @@ ${outputFormat}`;
   }
 
   private buildReducedControlBlock(
-    brief: ChapterBrief | undefined,
+    memo: ChapterMemo | undefined,
+    intent: ChapterIntent | undefined,
     chapterIntent: string | undefined,
     contextPackage: ContextPackage,
     ruleStack: RuleStack,
@@ -566,9 +568,9 @@ ${outputFormat}`;
         .map((override) => `- ${override.from} -> ${override.to}: ${override.reason} (${override.target})`)
         .join("\n")
       : "- none";
-    // Prefer brief-based narrative block; fall back to legacy intent markdown
-    const narrativeBlock = brief
-      ? renderBriefAsNarrativeBlock(brief, "zh")
+    // Prefer memo-based narrative block; fall back to legacy intent markdown
+    const narrativeBlock = memo
+      ? renderMemoAsNarrativeBlock(memo, intent, "zh")
       : chapterIntent
         ? buildNarrativeIntentBrief(chapterIntent, "zh")
         : "(无)";

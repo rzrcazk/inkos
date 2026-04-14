@@ -13,8 +13,8 @@ import {
   InputGovernanceModeSchema,
 } from "../models/project.js";
 import {
-  ChapterBriefSchema,
   ChapterIntentSchema,
+  ChapterMemoSchema,
   ContextPackageSchema,
   RuleStackSchema,
   ChapterTraceSchema,
@@ -498,67 +498,17 @@ describe("ChapterIntentSchema", () => {
       chapter: 12,
       goal: "Pull focus back to the mentor conflict",
       outlineNode: "Volume 2 / Chapter 12",
-      sceneDirective: "Break the repeated investigation-room rhythm with a location change.",
-      arcDirective: "Advance toward the next concrete arc beat instead of replaying the fallback setup.",
-      moodDirective: "Release pressure for one chapter before the next escalation.",
-      titleDirective: "Avoid another ledger title and use a new concrete image.",
+      arcContext: "Volume arc: mentor confrontation, post-betrayal.",
       mustKeep: ["Protagonist remains injured"],
       mustAvoid: ["Do not reveal the mastermind"],
       styleEmphasis: ["dialogue tension", "character conflict"],
-      conflicts: [
-        {
-          type: "outline_vs_focus",
-          resolution: "allow local outline deferral",
-        },
-      ],
-      hookAgenda: {
-        pressureMap: [
-          {
-            hookId: "H019",
-            type: "relationship",
-            payoffTiming: "slow-burn",
-            phase: "middle",
-            pressure: "high",
-            movement: "partial-payoff",
-            reason: "stale-promise",
-            blockSiblingHooks: true,
-          },
-        ],
-        mustAdvance: ["H019"],
-        eligibleResolve: ["H045"],
-        staleDebt: ["H023", "H027"],
-        avoidNewHookFamilies: [
-          "anonymous-source-restatement",
-          "mechanism-restatement",
-        ],
-      },
     });
 
     expect(result.chapter).toBe(12);
     expect(result.goal).toContain("mentor conflict");
-    expect(result.sceneDirective).toContain("location change");
-    expect(result.arcDirective).toContain("arc beat");
-    expect(result.moodDirective).toContain("Release pressure");
-    expect(result.titleDirective).toContain("ledger title");
-    expect(result.conflicts).toHaveLength(1);
-    expect(result.hookAgenda.pressureMap).toEqual([
-      expect.objectContaining({
-        hookId: "H019",
-        type: "relationship",
-        phase: "middle",
-        movement: "partial-payoff",
-        pressure: "high",
-        payoffTiming: "slow-burn",
-        reason: "stale-promise",
-      }),
-    ]);
-    expect(result.hookAgenda.mustAdvance).toEqual(["H019"]);
-    expect(result.hookAgenda.eligibleResolve).toEqual(["H045"]);
-    expect(result.hookAgenda.staleDebt).toEqual(["H023", "H027"]);
-    expect(result.hookAgenda.avoidNewHookFamilies).toEqual([
-      "anonymous-source-restatement",
-      "mechanism-restatement",
-    ]);
+    expect(result.outlineNode).toBe("Volume 2 / Chapter 12");
+    expect(result.arcContext).toContain("Volume arc");
+    expect(result.mustKeep).toContain("Protagonist remains injured");
   });
 
   it("defaults optional arrays to empty", () => {
@@ -567,19 +517,11 @@ describe("ChapterIntentSchema", () => {
       goal: "Establish the protagonist's first setback",
     });
 
-    expect(result.sceneDirective).toBeUndefined();
-    expect(result.arcDirective).toBeUndefined();
-    expect(result.moodDirective).toBeUndefined();
-    expect(result.titleDirective).toBeUndefined();
+    expect(result.outlineNode).toBeUndefined();
+    expect(result.arcContext).toBeUndefined();
     expect(result.mustKeep).toEqual([]);
     expect(result.mustAvoid).toEqual([]);
     expect(result.styleEmphasis).toEqual([]);
-    expect(result.conflicts).toEqual([]);
-    expect(result.hookAgenda.pressureMap).toEqual([]);
-    expect(result.hookAgenda.mustAdvance).toEqual([]);
-    expect(result.hookAgenda.eligibleResolve).toEqual([]);
-    expect(result.hookAgenda.staleDebt).toEqual([]);
-    expect(result.hookAgenda.avoidNewHookFamilies).toEqual([]);
   });
 
   it("rejects invalid chapter numbers", () => {
@@ -592,55 +534,31 @@ describe("ChapterIntentSchema", () => {
   });
 });
 
-describe("ChapterBriefSchema", () => {
-  it("accepts a structured chapter brief without mustKeep", () => {
-    const result = ChapterBriefSchema.parse({
+describe("ChapterMemoSchema", () => {
+  it("accepts a memo with body prose", () => {
+    const result = ChapterMemoSchema.parse({
       chapter: 12,
       goal: "Force the heroine to choose between the ledger and the mentor debt.",
-      chapterType: "confrontation",
       isGoldenOpening: true,
-      beatOutline: [
-        { phase: "opening", instruction: "Open inside the warehouse argument, not with recap." },
-        { phase: "development", instruction: "Expose the ledger discrepancy through action, not explanation." },
-        { phase: "hook", instruction: "End on the unsigned transfer sheet changing hands." },
-      ],
-      hookPlan: [
-        {
-          hookId: "H019",
-          movement: "advance",
-          targetEffect: "Move the mentor-debt line from abstract guilt to immediate cost.",
-        },
-      ],
-      dormantReason: "Hold the black-ring line for the next pressure spike.",
-      propsAndSetting: ["warehouse transfer sheet", "wet loading dock", "A Sheng"],
+      body: "Seven-section memo body (Phase 3 fills this with prose).",
+      hookRefs: ["H019", "H045"],
     });
 
-    expect(result.chapterType).toBe("confrontation");
     expect(result.isGoldenOpening).toBe(true);
-    expect(result.beatOutline).toHaveLength(3);
-    expect(result.hookPlan).toEqual([
-      expect.objectContaining({
-        hookId: "H019",
-        movement: "advance",
-      }),
-    ]);
-    expect(result.propsAndSetting).toContain("wet loading dock");
+    expect(result.body).toContain("memo body");
+    expect(result.hookRefs).toEqual(["H019", "H045"]);
   });
 
-  it("defaults optional brief arrays to empty", () => {
-    const result = ChapterBriefSchema.parse({
+  it("accepts a stub memo with empty body", () => {
+    const result = ChapterMemoSchema.parse({
       chapter: 3,
       goal: "Lock the protagonist into the first irreversible choice.",
-      chapterType: "opening",
-      beatOutline: [
-        { phase: "opening", instruction: "Open on the conflict." },
-      ],
+      body: "",
     });
 
     expect(result.isGoldenOpening).toBe(false);
-    expect(result.hookPlan).toEqual([]);
-    expect(result.propsAndSetting).toEqual([]);
-    expect(result.dormantReason).toBeUndefined();
+    expect(result.body).toBe("");
+    expect(result.hookRefs).toEqual([]);
   });
 });
 

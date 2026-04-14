@@ -5,7 +5,7 @@ import {
 } from "./memory-retrieval.js";
 import {
   isHookWithinChapterWindow,
-} from "./hook-agenda.js";
+} from "./hook-lifecycle.js";
 
 export function buildGovernedHookWorkingSet(params: {
   readonly hooksMarkdown: string;

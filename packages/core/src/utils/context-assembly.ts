@@ -10,6 +10,8 @@ import {
 import type { PlanChapterOutput } from "../agents/planner.js";
 
 export function buildGovernedRuleStack(plan: PlanChapterOutput, chapterNumber: number): RuleStack {
+  void plan;
+  void chapterNumber;
   return RuleStackSchema.parse({
     layers: [
       { id: "L1", name: "hard_facts", precedence: 100, scope: "global" },
@@ -27,12 +29,7 @@ export function buildGovernedRuleStack(plan: PlanChapterOutput, chapterNumber: n
       { from: "L4", to: "L2", allowed: false, scope: "current_chapter" },
       { from: "L4", to: "L1", allowed: false, scope: "current_chapter" },
     ],
-    activeOverrides: plan.intent.conflicts.map((conflict) => ({
-      from: "L4",
-      to: "L3",
-      target: plan.intent.outlineNode ?? `chapter_${chapterNumber}`,
-      reason: conflict.resolution,
-    })),
+    activeOverrides: [],
   });
 }
 
@@ -47,6 +44,6 @@ export function buildGovernedTrace(params: {
     plannerInputs: params.plan.plannerInputs,
     composerInputs: params.composerInputs,
     selectedSources: params.contextPackage.selectedContext.map((entry) => entry.source),
-    notes: params.plan.intent.conflicts.map((conflict) => conflict.resolution),
+    notes: [],
   });
 }

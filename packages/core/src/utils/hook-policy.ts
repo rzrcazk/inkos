@@ -1,7 +1,6 @@
 import type { HookPayoffTiming } from "../models/runtime-state.js";
 
 export type HookPhase = "opening" | "middle" | "late";
-export type HookAgendaLoad = "light" | "medium" | "heavy";
 
 export interface HookLifecycleProfile {
   readonly earliestResolveAge: number;
@@ -80,43 +79,6 @@ export const HOOK_ACTIVITY_THRESHOLDS = {
   longArcQuietHoldMaxDormancy: 1,
   refreshDormancy: 2,
   freshPromiseAge: 1,
-} as const;
-
-export const HOOK_AGENDA_LIMITS: Record<HookAgendaLoad, {
-  readonly staleDebt: number;
-  readonly mustAdvance: number;
-  readonly eligibleResolve: number;
-  readonly avoidFamilies: number;
-}> = {
-  light: {
-    staleDebt: 1,
-    mustAdvance: 2,
-    eligibleResolve: 1,
-    avoidFamilies: 2,
-  },
-  medium: {
-    staleDebt: 2,
-    mustAdvance: 2,
-    eligibleResolve: 1,
-    avoidFamilies: 3,
-  },
-  heavy: {
-    staleDebt: 3,
-    mustAdvance: 3,
-    eligibleResolve: 2,
-    avoidFamilies: 4,
-  },
-};
-
-export const HOOK_AGENDA_LOAD_THRESHOLDS = {
-  heavyReadyCount: 3,
-  heavyStaleCount: 4,
-  heavyCriticalCount: 3,
-  heavyPressuredCount: 6,
-  mediumReadyCount: 2,
-  mediumStaleCount: 2,
-  mediumCriticalCount: 1,
-  mediumPressuredFamilies: 3,
 } as const;
 
 export const HOOK_VISIBILITY_WINDOWS: Record<HookPayoffTiming, number> = {

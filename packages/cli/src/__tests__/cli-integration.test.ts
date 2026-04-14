@@ -837,15 +837,14 @@ describe("CLI integration", () => {
       await expect(stat(join(projectDir, "books", "cli-book", data.tracePath))).resolves.toBeTruthy();
     });
 
-    it("reuses the pre-planned intent when compose runs without a new context", async () => {
-      const plannedGoal = "Ignore the guild chase and focus on the mentor conflict.";
-
+    it("re-plans from outline when compose runs without a new context (Phase 1: persisted plans disabled)", async () => {
       const output = run(["compose", "chapter", "cli-book", "--json"]);
       const data = JSON.parse(output);
       const intentMarkdown = await readFile(join(projectDir, "books", "cli-book", data.intentPath), "utf-8");
 
-      expect(data.goal).toBe(plannedGoal);
-      expect(intentMarkdown).toContain(plannedGoal);
+      expect(typeof data.goal).toBe("string");
+      expect(data.goal.length).toBeGreaterThan(0);
+      expect(intentMarkdown).toContain(data.goal);
     });
   });
 
