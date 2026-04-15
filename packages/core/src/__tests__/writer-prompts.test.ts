@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BookConfig } from "../models/book.js";
 import type { GenreProfile } from "../models/genre-profile.js";
 import { LengthSpecSchema } from "../models/length-governance.js";
-import { buildWriterSystemPrompt } from "../agents/writer-prompts.js";
+import { buildWriterSystemPrompt, buildGoldenOpeningDiscipline } from "../agents/writer-prompts.js";
 
 const BOOK: BookConfig = {
   id: "prompt-book",
@@ -162,6 +162,82 @@ describe("buildWriterSystemPrompt", () => {
     expect(prompt).toContain("salt in soup");
     expect(prompt).toContain("Refuse chronicle drift");
     expect(prompt).toContain("core tag plus one contrasting detail");
+  });
+
+  it("injects golden opening discipline into zh writer system prompt for ch<=3", () => {
+    for (const ch of [1, 2, 3]) {
+      const prompt = buildWriterSystemPrompt(
+        BOOK,
+        GENRE,
+        null,
+        "# Book Rules",
+        "# Genre Body",
+        "# Style Guide",
+        undefined,
+        ch,
+        "creative",
+        undefined,
+        "zh",
+        "governed",
+      );
+      expect(prompt).toContain("黄金三章写作纪律");
+      expect(prompt).toContain(`第 ${ch} 章`);
+    }
+  });
+
+  it("injects golden opening discipline into en writer system prompt for ch<=3", () => {
+    for (const ch of [1, 2, 3]) {
+      const prompt = buildWriterSystemPrompt(
+        BOOK,
+        { ...GENRE, language: "en", name: "General" },
+        null,
+        "# Book Rules",
+        "# Genre Body",
+        "# Style Guide",
+        undefined,
+        ch,
+        "creative",
+        undefined,
+        "en",
+        "governed",
+      );
+      expect(prompt).toContain("Golden Opening Discipline");
+      expect(prompt).toContain(`Chapter ${ch}`);
+    }
+  });
+
+  it("omits golden opening discipline for ch>=4 in both languages", () => {
+    const zh = buildWriterSystemPrompt(
+      BOOK, GENRE, null, "# Book Rules", "# Genre Body", "# Style Guide",
+      undefined, 4, "creative", undefined, "zh", "governed",
+    );
+    expect(zh).not.toContain("黄金三章写作纪律");
+
+    const en = buildWriterSystemPrompt(
+      BOOK, { ...GENRE, language: "en", name: "General" }, null,
+      "# Book Rules", "# Genre Body", "# Style Guide",
+      undefined, 4, "creative", undefined, "en", "governed",
+    );
+    expect(en).not.toContain("Golden Opening Discipline");
+  });
+
+  it("renders golden opening discipline as cohesive prose, not a checklist", () => {
+    const out = buildGoldenOpeningDiscipline(1, "zh");
+    // Header line is allowed; body must not contain enumerated/bulleted lines.
+    expect(out).not.toMatch(/^\s*1\.\s/m);
+    expect(out).not.toMatch(/^\s*-\s/m);
+    expect(out).not.toMatch(/^\s*\*\s/m);
+    // Carries the load-bearing slot constraints.
+    expect(out).toContain("800 字");
+    expect(out).toContain("做出来");
+    expect(out).toContain("说出来");
+    expect(out).toContain("小钩子");
+  });
+
+  it("buildGoldenOpeningDiscipline returns empty string for ch>=4 / undefined", () => {
+    expect(buildGoldenOpeningDiscipline(4, "zh")).toBe("");
+    expect(buildGoldenOpeningDiscipline(99, "en")).toBe("");
+    expect(buildGoldenOpeningDiscipline(undefined, "zh")).toBe("");
   });
 
   it("tells governed English prompts to obey variance briefs and include resistance-bearing exchanges", () => {
