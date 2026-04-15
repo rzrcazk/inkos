@@ -49,6 +49,7 @@ export function buildWriterSystemPrompt(
         buildWritingCraftCard("en"),
         buildCreativeConstitution("en"),
         buildImmersionPillars("en"),
+        buildGoldenOpeningDiscipline(chapterNumber, "en"),
         buildGenreRules(genreProfile, genreBody),
         buildProtagonistRules(bookRules),
         buildBookRulesBody(bookRulesBody),
@@ -69,6 +70,7 @@ export function buildWriterSystemPrompt(
         buildWritingCraftCard("zh"),
         buildCreativeConstitution("zh"),
         buildImmersionPillars("zh"),
+        buildGoldenOpeningDiscipline(chapterNumber, "zh"),
         buildGoldenChaptersRules(chapterNumber, isEnglish ? "en" : "zh"),
         bookRules?.enableFullCastTracking ? buildFullCastTracking() : "",
         buildGenreRules(genreProfile, genreBody),
@@ -479,6 +481,33 @@ Tag the basics: within a hundred words the reader knows who is on stage, where t
 读者代入感靠六根支柱支撑。每一个场景的前几页都要把六根柱子立起来——静默地立，不要点名、不要报告。
 
 基础信息标签化：一百字内让读者知道谁在场、在哪儿、发生什么，读者脑里才能搭出这个房间。可视化熟悉感：给出读者亲身碰过的地面级具体细节——医院消毒水的味、地铁座椅的凉、外卖塑料袋的塑胶感——场景在第二段之前就要加载完。共鸣分两层：认知共鸣（"这种情况下我也会这么选"）+ 情绪共鸣（亲情、被欺压时的愤怒、不公、隐忍的骄傲）。欲望两条腿走路：基础欲望（不劳而获、压制比自己高的人、被欺压之后的扬眉吐气）+ 主动欲望（本章自己挖的期待感——一个读者会带到下一章的情绪缺口）。五感钩子：每个场景除视觉外放 1-2 种感官细节（听/嗅/触/味），顺手带过，绝不写成大段天气描写。人设要"核心标签 + 一个反差细节"才活——冷面杀手偷偷喂流浪猫、和善父亲开的玩笑像刀子。这六根柱子是场景的默认形状，不是章末打勾的清单。`;
+}
+
+// ---------------------------------------------------------------------------
+// 黄金三章 prose discipline — Phase 6.5
+// Single conditional append (chapterNumber <= 3). No new schema, no new
+// runtime branch. Cohesive paragraphs, NOT a numbered checklist.
+// ---------------------------------------------------------------------------
+
+export function buildGoldenOpeningDiscipline(
+  chapterNumber: number | undefined,
+  language: "zh" | "en",
+): string {
+  if (chapterNumber === undefined || chapterNumber > 3) return "";
+
+  if (language === "en") {
+    return `## Golden Opening Discipline — Chapter ${chapterNumber}
+
+This is chapter ${chapterNumber} of the opening three — your prose directly decides whether the reader stays. The Golden Three Chapters rule from new.txt is a hard constraint on your sentences, not advice. Chapter 1: within the first 800 words the protagonist must trip the main-line conflict (chase, dead-end, dispossession, transmigration-as-crisis); long background paragraphs are forbidden, and worldbuilding rides on the protagonist's actions instead of being explained in a block. Chapter 2: the edge — power, system, rebirth-memory, information advantage — must be **performed** (one concrete event of using it, with a visible consequence), not **announced** (a narrator paragraph saying it exists). Chapter 3: somewhere in this chapter the protagonist's next quantifiable short-term goal must surface, so the reader can name what comes next when they close the page.
+
+The discipline that runs across all three opening chapters: paragraphs of three to five lines (mobile reading), verbs over adjectives, and every chapter ends on a small hook — a cliff, an unresolved question, or an emotional gap. At most three scenes and at most three named characters this chapter (extra people get a name only, no expansion). Information is layered into action: basic facts (looks, status, situation) emerge from what the protagonist does; key world rules (system mechanics, the deeper logic) attach to plot triggers; a paragraph of pure exposition is forbidden.`;
+  }
+
+  return `## 黄金三章写作纪律 — 第 ${chapterNumber} 章
+
+这是开篇三章中的第 ${chapterNumber} 章——你写出的每一句话都直接决定读者是否留下来。new.txt 的黄金三章法则对你不是建议，是对句子的硬约束。第 1 章：主角出场 800 字以内必须触发主线冲突（追杀、死局、被夺权、穿越即危机），禁止长段背景铺垫，世界观要通过主角的行动自然带出，不要整段解释。第 2 章：金手指/能力/系统/重生记忆/信息差必须"做出来"——一次具体使用的事件、一个看得见的后果——而不是"说出来"——旁白介绍它存在。第 3 章：本章中段必须让主角下一个可量化的短期目标浮上水面，读者合上页面要能说出"接下来他要干什么"。
+
+贯穿开篇三章的纪律：段落 3-5 行（手机阅读节奏），动词压过形容词，每一章结尾必有小钩子——小悬念、未解之问、情绪缺口。本章场景 ≤ 3 个、人物 ≤ 3 个（多出来的人物只报名字、不展开）。信息分层植入到动作里：基础信息（外貌、身份、处境）通过主角行动自然带出；关键设定（系统规则、世界底层）结合剧情节点揭示；禁止整段 exposition。`;
 }
 
 // ---------------------------------------------------------------------------

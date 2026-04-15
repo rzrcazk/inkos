@@ -93,7 +93,7 @@ export { PolisherAgent, type PolishChapterInput, type PolishChapterOutput } from
 export { RadarAgent, type RadarResult, type RadarRecommendation } from "./agents/radar.js";
 export { FanqieRadarSource, QidianRadarSource, TextRadarSource, type RadarSource, type PlatformRankings, type RankingEntry } from "./agents/radar-source.js";
 export { readGenreProfile, readBookRules, listAvailableGenres, getBuiltinGenresDir } from "./agents/rules-reader.js";
-export { buildWriterSystemPrompt } from "./agents/writer-prompts.js";
+export { buildWriterSystemPrompt, buildGoldenOpeningDiscipline } from "./agents/writer-prompts.js";
 export { analyzeAITells, type AITellResult, type AITellIssue } from "./agents/ai-tells.js";
 export { analyzeSensitiveWords, type SensitiveWordResult, type SensitiveWordMatch } from "./agents/sensitive-words.js";
 export { detectAIContent, type DetectionResult } from "./agents/detector.js";
