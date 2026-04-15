@@ -624,7 +624,7 @@ Rules:
   async writeFoundationFiles(
     bookDir: string,
     output: ArchitectOutput,
-    numericalSystem: boolean = true,
+    _numericalSystem: boolean = true,
     language: "zh" | "en" = "zh",
   ): Promise<void> {
     const storyDir = join(bookDir, "story");
@@ -692,25 +692,14 @@ Rules:
       "utf-8",
     ));
 
-    // particle_ledger / subplot_board / chapter_summaries are created on demand
-    // by the chapter-analyzer settlement — the architect no longer seeds them
-    // (they are deprecated from the static layer in Phase 5).
-    if (numericalSystem) {
-      writes.push(writeFile(
-        join(storyDir, "particle_ledger.md"),
-        language === "en"
-          ? "# Resource Ledger\n\n| Chapter | Opening Value | Source | Integrity | Delta | Closing Value | Evidence |\n| --- | --- | --- | --- | --- | --- | --- |\n| 0 | 0 | Initialization | - | 0 | 0 | Initial book state |\n"
-          : "# 资源账本\n\n| 章节 | 期初值 | 来源 | 完整度 | 增量 | 期末值 | 依据 |\n|------|--------|------|--------|------|--------|------|\n| 0 | 0 | 初始化 | - | 0 | 0 | 开书初始 |\n",
-        "utf-8",
-      ));
-    }
-    writes.push(writeFile(
-      join(storyDir, "subplot_board.md"),
-      language === "en"
-        ? "# Subplot Board\n\n| Subplot ID | Subplot | Related Characters | Start Chapter | Last Active Chapter | Chapters Since | Status | Progress Summary | Payoff ETA |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
-        : "# 支线进度板\n\n| 支线ID | 支线名 | 相关角色 | 起始章 | 最近活跃章 | 距今章数 | 状态 | 进度概述 | 回收ETA |\n|--------|--------|----------|--------|------------|----------|------|----------|---------|\n",
-      "utf-8",
-    ));
+    // Cleanup #2 (Option B): particle_ledger.md / subplot_board.md /
+    // chapter_summaries.md are pure runtime logs appended by the writer's
+    // settlement phase. The architect no longer seeds them here — mixing a
+    // static "setting" seed with a runtime "append log" was the dual-purpose
+    // mess that prompted the cleanup. If they don't exist yet, downstream
+    // readers see the placeholder and the first chapter settlement creates
+    // them naturally. The `_numericalSystem` parameter is kept for API
+    // compatibility with existing callers.
 
     await Promise.all(writes);
   }
