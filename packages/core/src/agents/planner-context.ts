@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseMarkdownTableRows } from "../utils/story-markdown.js";
 import { readCharacterContext } from "../utils/outline-paths.js";
+import { readBookRules as readStructuredBookRules } from "./rules-reader.js";
 
 async function readOrEmpty(path: string): Promise<string> {
   try {
@@ -33,8 +34,54 @@ export async function readPendingHooks(storyDir: string): Promise<string> {
   return readOrEmpty(join(storyDir, "pending_hooks.md"));
 }
 
+/**
+ * Render the structured book rules (protagonist / prohibitions / genreLock /
+ * behavioral constraints) as a compact markdown block for the planner prompt.
+ *
+ * Phase 5 cleanup #3: reads the YAML frontmatter via readStructuredBookRules
+ * (which prefers story_frame.md and falls back to legacy book_rules.md).
+ * Returns "" when no structured rules are defined — the planner template
+ * provides its own placeholder for that case.
+ */
 export async function readBookRules(storyDir: string): Promise<string> {
-  return readOrEmpty(join(storyDir, "book_rules.md"));
+  const bookDir = dirname(storyDir);
+  const parsed = await readStructuredBookRules(bookDir);
+  if (!parsed) return "";
+
+  const { rules, body } = parsed;
+  const lines: string[] = [];
+
+  if (rules.protagonist) {
+    const proto = rules.protagonist;
+    const personality = proto.personalityLock.join("、");
+    const constraints = proto.behavioralConstraints.join("、");
+    lines.push(`- 主角 ${proto.name}${personality ? ` / 人设锁：${personality}` : ""}${constraints ? ` / 行为约束：${constraints}` : ""}`);
+  }
+
+  if (rules.prohibitions.length > 0) {
+    lines.push("- 本书禁忌：");
+    for (const p of rules.prohibitions) {
+      lines.push(`  - ${p}`);
+    }
+  }
+
+  if (rules.genreLock) {
+    const forbidden = rules.genreLock.forbidden.join("、");
+    lines.push(`- 题材锁：${rules.genreLock.primary}${forbidden ? ` / 禁止混入：${forbidden}` : ""}`);
+  }
+
+  if (rules.fanficMode) {
+    lines.push(`- 同人模式：${rules.fanficMode}`);
+  }
+
+  const trimmedBody = body.trim();
+  // The body holds narrative guidance prose (e.g. 叙事视角). Include it verbatim
+  // so the planner sees the same text as before the cleanup.
+  if (trimmedBody) {
+    lines.push("", trimmedBody);
+  }
+
+  return lines.join("\n").trim();
 }
 
 /**

@@ -20,7 +20,8 @@ import { renderHookSnapshot } from "../utils/memory-retrieval.js";
 //   roles/次要角色/<name>.md    ← one file per minor character
 //   story_bible.md              ← compat shim (pointer + excerpt)
 //   character_matrix.md         ← compat shim (pointer + role listing)
-//   book_rules.md               ← YAML frontmatter kept for readBookRules()
+//   book_rules.md               ← compat shim (cleanup #3). YAML frontmatter
+//                                 now lives on story_frame.md.
 //   current_state.md            ← runtime state (unchanged)
 //   pending_hooks.md            ← runtime state (unchanged)
 //   emotional_arcs.md           ← runtime state (unchanged)
@@ -33,6 +34,25 @@ export interface ArchitectRole {
   readonly tier: "major" | "minor";
   readonly name: string;
   readonly content: string;
+}
+
+/**
+ * Split a markdown string into its leading YAML frontmatter block and the
+ * remaining body. Returns `frontmatter: null` when no frontmatter is present.
+ * Only recognises a frontmatter block that starts on the FIRST non-empty
+ * line — embedded `---` sections in prose are left alone.
+ */
+function extractYamlFrontmatter(raw: string): { frontmatter: string | null; body: string } {
+  if (!raw) return { frontmatter: null, body: "" };
+  const stripped = raw.replace(/^```(?:md|markdown|yaml)?\s*\n/, "").replace(/\n```\s*$/, "");
+  const leadingMatch = stripped.match(/^\s*---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
+  if (!leadingMatch) {
+    return { frontmatter: null, body: stripped };
+  }
+  return {
+    frontmatter: `---\n${leadingMatch[1]}\n---`,
+    body: leadingMatch[2].trim(),
+  };
 }
 
 export interface ArchitectOutput {
@@ -618,6 +638,20 @@ Rules:
     return `# 角色矩阵（兼容指针——已废弃）\n\n> 本文件仅为外部读取保留。权威来源已迁移至 roles/ 文件夹（一人一卡）。\n\n## 主要角色\n\n${majorLines.join("\n") || "（无）"}\n\n## 次要角色\n\n${minorLines.join("\n") || "（无）"}\n`;
   }
 
+  private buildBookRulesShim(bookRulesBody: string, language: "zh" | "en"): string {
+    const trimmedBody = bookRulesBody.trim();
+    if (language === "en") {
+      const excerpt = trimmedBody
+        ? `\n\n## Narrative guidance excerpt\n\n${trimmedBody}\n`
+        : "";
+      return `# Book Rules (compat pointer — deprecated)\n\n> This file is kept for external readers only. The authoritative YAML frontmatter (protagonist / prohibitions / genreLock / ...) now lives at the top of outline/story_frame.md. readBookRules() prefers that location and only falls back here for books initialized before Phase 5 cleanup #3.${excerpt}`;
+    }
+    const excerpt = trimmedBody
+      ? `\n\n## 叙事指引摘录\n\n${trimmedBody}\n`
+      : "";
+    return `# 本书规则（兼容指针——已废弃）\n\n> 本文件仅为外部读取保留。权威 YAML frontmatter（protagonist / prohibitions / genreLock / ...）已迁移至 outline/story_frame.md 顶部。readBookRules() 优先读那里，只有 Phase 5 cleanup #3 之前的老书才会回退到本文件。${excerpt}`;
+  }
+
   // -------------------------------------------------------------------------
   // File writing
   // -------------------------------------------------------------------------
@@ -642,10 +676,20 @@ Rules:
 
     const writes: Array<Promise<void>> = [];
 
-    const storyFrame = output.storyFrame ?? output.storyBible;
+    const storyFrameBody = output.storyFrame ?? output.storyBible;
     const volumeMap = output.volumeMap ?? output.volumeOutline;
     const rhythmPrinciples = output.rhythmPrinciples ?? "";
     const roles = output.roles ?? [];
+
+    // Cleanup #3: book_rules YAML frontmatter is now the authoritative
+    // schema for structured fields (protagonist, prohibitions, …). We prepend
+    // it to story_frame.md so readers have one canonical place to look.
+    // book_rules.md becomes a compat shim.
+    const { frontmatter: bookRulesFrontmatter, body: bookRulesBody } =
+      extractYamlFrontmatter(output.bookRules);
+    const storyFrame = bookRulesFrontmatter
+      ? `${bookRulesFrontmatter}\n\n${storyFrameBody.trim()}\n`
+      : storyFrameBody;
 
     // Phase 5 primary prose files
     writes.push(writeFile(join(outlineDir, "story_frame.md"), storyFrame, "utf-8"));
@@ -678,8 +722,14 @@ Rules:
     // outline/volume_map.md and falls back to legacy volume_outline.md for
     // books initialized before Phase 5.
 
-    // book_rules.md is still produced — readBookRules() depends on YAML.
-    writes.push(writeFile(join(storyDir, "book_rules.md"), output.bookRules, "utf-8"));
+    // book_rules.md is now a compat shim — the authoritative YAML
+    // frontmatter lives on story_frame.md (cleanup #3). readBookRules()
+    // prefers story_frame.md but still falls back here for older books.
+    writes.push(writeFile(
+      join(storyDir, "book_rules.md"),
+      this.buildBookRulesShim(bookRulesBody, language),
+      "utf-8",
+    ));
 
     // Runtime state files (untouched by Phase 5)
     writes.push(writeFile(join(storyDir, "current_state.md"), output.currentState, "utf-8"));

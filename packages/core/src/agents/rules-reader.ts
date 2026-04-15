@@ -86,13 +86,27 @@ export function getBuiltinGenresDir(): string {
 }
 
 /**
- * Load book_rules.md from the book's story directory.
- * Returns null if the file doesn't exist.
+ * Load the structured book rules (YAML frontmatter).
+ *
+ * Phase 5 cleanup #3: the YAML frontmatter now lives at the top of
+ * outline/story_frame.md. For books initialized before that cleanup it may
+ * still live in book_rules.md instead, so we fall back to that legacy path
+ * when story_frame.md has no frontmatter (or no file at all).
+ *
+ * Returns null only if NEITHER source yields parseable rules.
  */
 export async function readBookRules(bookDir: string): Promise<ParsedBookRules | null> {
-  const raw = await tryReadFile(join(bookDir, "story/book_rules.md"));
-  if (!raw) return null;
-  return parseBookRules(raw);
+  const storyFrameRaw = await tryReadFile(join(bookDir, "story/outline/story_frame.md"));
+  if (storyFrameRaw && /^\s*---\s*\n/.test(storyFrameRaw)) {
+    const parsed = parseBookRules(storyFrameRaw);
+    // parseBookRules returns defaults when no YAML matches — only treat the
+    // story_frame hit as authoritative when the leading frontmatter exists.
+    if (parsed) return parsed;
+  }
+
+  const legacyRaw = await tryReadFile(join(bookDir, "story/book_rules.md"));
+  if (!legacyRaw) return null;
+  return parseBookRules(legacyRaw);
 }
 
 export async function readBookLanguage(bookDir: string): Promise<"zh" | "en" | undefined> {
