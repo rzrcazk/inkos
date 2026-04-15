@@ -142,6 +142,17 @@ interface EnvConfigStatus {
   effectiveSource: "project" | "global" | null;
 }
 
+interface ServiceProbeResult {
+  ok: boolean;
+  models: Array<{ id: string; name: string }>;
+  selectedModel?: string;
+  apiFormat?: "chat" | "responses";
+  stream?: boolean;
+  baseUrl?: string;
+  modelsSource?: "api" | "fallback";
+  error?: string;
+}
+
 function broadcast(event: string, data: unknown): void {
   for (const handler of subscribers) {
     handler(event, data);
@@ -161,7 +172,7 @@ function normalizeServiceEntry(serviceId: string, value: Record<string, unknown>
     return {
       service: "custom",
       name: decodeURIComponent(serviceId.slice("custom:".length)),
-      ...(typeof value.baseUrl === "string" && value.baseUrl.length > 0 ? { baseUrl: normalizeBaseUrl(value.baseUrl) } : {}),
+      ...(typeof value.baseUrl === "string" && value.baseUrl.length > 0 ? { baseUrl: value.baseUrl } : {}),
       ...(typeof value.temperature === "number" ? { temperature: value.temperature } : {}),
       ...(typeof value.maxTokens === "number" ? { maxTokens: value.maxTokens } : {}),
       ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
@@ -173,7 +184,7 @@ function normalizeServiceEntry(serviceId: string, value: Record<string, unknown>
     return {
       service: "custom",
       ...(typeof value.name === "string" && value.name.length > 0 ? { name: value.name } : {}),
-      ...(typeof value.baseUrl === "string" && value.baseUrl.length > 0 ? { baseUrl: normalizeBaseUrl(value.baseUrl) } : {}),
+      ...(typeof value.baseUrl === "string" && value.baseUrl.length > 0 ? { baseUrl: value.baseUrl } : {}),
       ...(typeof value.temperature === "number" ? { temperature: value.temperature } : {}),
       ...(typeof value.maxTokens === "number" ? { maxTokens: value.maxTokens } : {}),
       ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
@@ -194,29 +205,19 @@ function normalizeConfigSource(value: unknown): LLMConfigSource {
   return value === "studio" ? "studio" : "env";
 }
 
-/** Ensure custom baseUrl ends with /v1 (common convention for OpenAI-compatible APIs). */
-function normalizeBaseUrl(url: string): string {
-  const trimmed = url.replace(/\/+$/, "");
-  if (/\/v\d+$/.test(trimmed)) return trimmed;
-  return trimmed + "/v1";
-}
-
 function normalizeServiceConfig(raw: unknown): ServiceConfigEntry[] {
   if (Array.isArray(raw)) {
     return raw
       .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object")
-      .map((entry) => {
-        const svc = typeof entry.service === "string" && entry.service.length > 0 ? entry.service : "custom";
-        const isCustom = svc === "custom";
-        return {
-        service: svc,
+      .map((entry) => ({
+        service: typeof entry.service === "string" && entry.service.length > 0 ? entry.service : "custom",
         ...(typeof entry.name === "string" && entry.name.length > 0 ? { name: entry.name } : {}),
-        ...(typeof entry.baseUrl === "string" && entry.baseUrl.length > 0 ? { baseUrl: isCustom ? normalizeBaseUrl(entry.baseUrl) : entry.baseUrl } : {}),
+        ...(typeof entry.baseUrl === "string" && entry.baseUrl.length > 0 ? { baseUrl: entry.baseUrl } : {}),
         ...(typeof entry.temperature === "number" ? { temperature: entry.temperature } : {}),
         ...(typeof entry.maxTokens === "number" ? { maxTokens: entry.maxTokens } : {}),
         ...(entry.apiFormat === "chat" || entry.apiFormat === "responses" ? { apiFormat: entry.apiFormat } : {}),
         ...(typeof entry.stream === "boolean" ? { stream: entry.stream } : {}),
-      }; });
+      }));
   }
 
   if (raw && typeof raw === "object") {
@@ -295,7 +296,7 @@ async function readEnvConfigStatus(root: string): Promise<EnvConfigStatus> {
 }
 
 async function resolveConfiguredServiceBaseUrl(root: string, serviceId: string, inlineBaseUrl?: string): Promise<string | undefined> {
-  if (inlineBaseUrl?.trim()) return isCustomServiceId(serviceId) ? normalizeBaseUrl(inlineBaseUrl.trim()) : inlineBaseUrl.trim();
+  if (inlineBaseUrl?.trim()) return inlineBaseUrl.trim();
 
   if (!isCustomServiceId(serviceId)) {
     return resolveServicePreset(serviceId)?.baseUrl;
@@ -319,6 +320,167 @@ async function resolveConfiguredServiceEntry(root: string, serviceId: string): P
   } catch {
     return undefined;
   }
+}
+
+function buildProbePlans(
+  preferredApiFormat: "chat" | "responses" | undefined,
+  preferredStream: boolean | undefined,
+): Array<{ apiFormat: "chat" | "responses"; stream: boolean }> {
+  const candidates: Array<{ apiFormat: "chat" | "responses"; stream: boolean }> = [];
+  const seen = new Set<string>();
+  const push = (apiFormat: "chat" | "responses", stream: boolean) => {
+    const key = `${apiFormat}:${stream ? "1" : "0"}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ apiFormat, stream });
+  };
+
+  if (preferredApiFormat) {
+    push(preferredApiFormat, preferredStream ?? false);
+    push(preferredApiFormat, !(preferredStream ?? false));
+  }
+  const alternate = preferredApiFormat === "responses" ? "chat" : "responses";
+  push(alternate, false);
+  push(alternate, true);
+  push("chat", false);
+  push("chat", true);
+  push("responses", false);
+  push("responses", true);
+  return candidates;
+}
+
+function buildModelCandidates(args: {
+  preferredModel?: string;
+  configModel?: string;
+  envModel?: string | null;
+  discoveredModels: Array<{ id: string; name: string }>;
+}): string[] {
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  const push = (value: string | null | undefined) => {
+    if (!value || value.trim().length === 0) return;
+    const id = value.trim();
+    if (seen.has(id)) return;
+    seen.add(id);
+    candidates.push(id);
+  };
+
+  push(args.preferredModel);
+  push(args.configModel);
+  push(args.envModel ?? undefined);
+  for (const model of args.discoveredModels) push(model.id);
+  push("gpt-5.4");
+  push("gpt-4o");
+  push("claude-sonnet-4-6");
+  push("MiniMax-M2.7");
+  push("kimi-k2.5");
+  return candidates;
+}
+
+async function fetchModelsFromServiceBaseUrl(
+  baseUrl: string,
+  apiKey: string,
+): Promise<{ models: Array<{ id: string; name: string }>; error?: string }> {
+  const modelsUrl = baseUrl.replace(/\/$/, "") + "/models";
+  try {
+    const res = await fetch(modelsUrl, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      return { models: [], error: `服务商返回 ${res.status}: ${body.slice(0, 200)}` };
+    }
+    const json = await res.json() as { data?: Array<{ id: string }> };
+    return {
+      models: (json.data ?? []).map((m) => ({ id: m.id, name: m.id })),
+    };
+  } catch (error) {
+    return {
+      models: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function probeServiceCapabilities(args: {
+  root: string;
+  service: string;
+  apiKey: string;
+  baseUrl: string;
+  preferredApiFormat?: "chat" | "responses";
+  preferredStream?: boolean;
+  preferredModel?: string;
+}): Promise<ServiceProbeResult> {
+  const rawConfig = await loadRawConfig(args.root).catch(() => ({} as Record<string, unknown>));
+  const llm = (rawConfig.llm as Record<string, unknown> | undefined) ?? {};
+  const envConfig = await readEnvConfigStatus(args.root);
+  const envModel = envConfig.effectiveSource === "project"
+    ? envConfig.project.model
+    : envConfig.effectiveSource === "global"
+      ? envConfig.global.model
+      : null;
+
+  const modelsResponse = await fetchModelsFromServiceBaseUrl(args.baseUrl, args.apiKey);
+  const discoveredModels = modelsResponse.models;
+  const modelCandidates = buildModelCandidates({
+    preferredModel: args.preferredModel,
+    configModel: typeof llm.defaultModel === "string" ? llm.defaultModel : typeof llm.model === "string" ? llm.model : undefined,
+    envModel,
+    discoveredModels,
+  });
+
+  if (modelCandidates.length === 0) {
+    return {
+      ok: false,
+      models: [],
+      error: "无法自动确定模型，请先填写可用模型或提供支持 /models 的服务端点。",
+    };
+  }
+
+  let lastError = modelsResponse.error ?? "自动探测失败";
+
+  for (const model of modelCandidates) {
+    for (const plan of buildProbePlans(args.preferredApiFormat, args.preferredStream)) {
+      const client = createLLMClient({
+        provider: args.service === "anthropic" ? "anthropic" : "openai",
+        service: isCustomServiceId(args.service) ? "custom" : args.service,
+        configSource: "studio",
+        baseUrl: args.baseUrl,
+        apiKey: args.apiKey.trim(),
+        model,
+        temperature: 0.7,
+        maxTokens: 64,
+        thinkingBudget: 0,
+        apiFormat: plan.apiFormat,
+        stream: plan.stream,
+      } as ProjectConfig["llm"]);
+
+      try {
+        await chatCompletion(client, model, [{ role: "user", content: "ping" }], { maxTokens: 5 });
+        const models = discoveredModels.length > 0
+          ? discoveredModels
+          : [{ id: model, name: model }];
+        return {
+          ok: true,
+          models,
+          selectedModel: model,
+          apiFormat: plan.apiFormat,
+          stream: plan.stream,
+          baseUrl: args.baseUrl,
+          modelsSource: discoveredModels.length > 0 ? "api" : "fallback",
+        };
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+    }
+  }
+
+  return {
+    ok: false,
+    models: discoveredModels,
+    error: lastError,
+  };
 }
 
 // --- Server factory ---
@@ -763,7 +925,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   });
 
   app.put("/api/v1/services/config", async (c) => {
-    const body = await c.req.json<{ services?: unknown; defaultModel?: string; configSource?: LLMConfigSource }>();
+    const body = await c.req.json<{ services?: unknown; defaultModel?: string; configSource?: LLMConfigSource; service?: string }>();
     const config = await loadRawConfig(root);
     config.llm = config.llm ?? {};
     const llm = config.llm as Record<string, unknown>;
@@ -777,6 +939,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     }
     if (body.configSource !== undefined) {
       llm.configSource = normalizeConfigSource(body.configSource);
+    }
+    if (body.service !== undefined) {
+      llm.service = body.service;
     }
     await saveRawConfig(root, config);
     return c.json({ ok: true });
@@ -800,41 +965,31 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       return c.json({ ok: false, error: `未知服务商: ${service}` }, 400);
     }
 
-    // Try /models API — validates key + discovers models in one call
-    const modelsUrl = resolvedBaseUrl.replace(/\/$/, "") + "/models";
-    let models: Array<{ id: string; name: string }> = [];
-    try {
-      const res = await fetch(modelsUrl, {
-        headers: { Authorization: `Bearer ${apiKey.trim()}` },
-        signal: AbortSignal.timeout(10_000),
-      });
+    const probe = await probeServiceCapabilities({
+      root,
+      service,
+      apiKey: apiKey.trim(),
+      baseUrl: resolvedBaseUrl,
+      preferredApiFormat: apiFormat,
+      preferredStream: stream,
+    });
 
-      if (res.status === 401 || res.status === 403) {
-        return c.json({ ok: false, error: "API Key 无效，请检查后重试" }, 400);
-      }
-
-      if (res.ok) {
-        const json = await res.json() as { data?: Array<{ id: string; owned_by?: string }> };
-        models = (json.data ?? []).map((m) => ({ id: m.id, name: m.id }));
-      }
-    } catch (err: any) {
-      if (err?.name === "TimeoutError" || err?.name === "AbortError") {
-        return c.json({ ok: false, error: `连接超时：无法访问 ${modelsUrl}` }, 400);
-      }
-      // Network error — continue to fallback
+    if (!probe.ok) {
+      return c.json({ ok: false, error: probe.error ?? "连接失败" }, 400);
     }
 
-    // /models unavailable (404 etc.) — fallback to pi-ai built-in model list
-    if (models.length === 0) {
-      const builtIn = await listModelsForService(service);
-      models = builtIn.map((m) => ({ id: m.id, name: m.name }));
-    }
-
-    if (models.length === 0) {
-      return c.json({ ok: false, error: "未找到可用模型" }, 400);
-    }
-
-    return c.json({ ok: true, modelCount: models.length, models: models.slice(0, 50) });
+    return c.json({
+      ok: true,
+      modelCount: probe.models.length,
+      models: probe.models.slice(0, 50),
+      selectedModel: probe.selectedModel,
+      detected: {
+        apiFormat: probe.apiFormat,
+        stream: probe.stream,
+        baseUrl: probe.baseUrl,
+        modelsSource: probe.modelsSource,
+      },
+    });
   });
 
   app.put("/api/v1/services/:service/secret", async (c) => {
@@ -868,24 +1023,22 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const resolvedBaseUrl = await resolveConfiguredServiceBaseUrl(root, service);
     if (!resolvedBaseUrl) return c.json({ models: [] });
 
-    // Call real /models API, fallback to pi-ai built-in list
-    let models: Array<{ id: string; name: string }> = [];
-    try {
-      const modelsUrl = resolvedBaseUrl.replace(/\/$/, "") + "/models";
-      const res = await fetch(modelsUrl, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (res.ok) {
-        const json = await res.json() as { data?: Array<{ id: string }> };
-        models = (json.data ?? []).map((m) => ({ id: m.id, name: m.id }));
-      }
-    } catch { /* timeout or network error */ }
-    if (models.length === 0) {
-      const builtIn = await listModelsForService(service, apiKey);
-      models = builtIn.map((m) => ({ id: m.id, name: m.name }));
-    }
-    return c.json({ models });
+    const rawConfig = await loadRawConfig(root).catch(() => ({} as Record<string, unknown>));
+    const llm = (rawConfig.llm as Record<string, unknown> | undefined) ?? {};
+    const preferredModel = typeof llm.defaultModel === "string" ? llm.defaultModel : undefined;
+    const serviceEntry = await resolveConfiguredServiceEntry(root, service);
+    const probe = await probeServiceCapabilities({
+      root,
+      service,
+      apiKey,
+      baseUrl: resolvedBaseUrl,
+      preferredApiFormat: serviceEntry?.apiFormat,
+      preferredStream: serviceEntry?.stream,
+      preferredModel,
+    });
+    return c.json({
+      models: probe.ok ? probe.models : [],
+    });
   });
 
   // --- Project info ---
@@ -2118,10 +2271,17 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     try {
       const currentConfig = await loadCurrentProjectConfig({ requireApiKey: false });
-      const client = createLLMClient(currentConfig.llm);
-      const { chatCompletion } = await import("@actalk/inkos-core");
-      await chatCompletion(client, currentConfig.llm.model, [{ role: "user", content: "ping" }], { maxTokens: 5 });
-      checks.llmConnected = true;
+      const service = currentConfig.llm.service ?? currentConfig.llm.provider;
+      const probe = await probeServiceCapabilities({
+        root,
+        service,
+        apiKey: currentConfig.llm.apiKey,
+        baseUrl: currentConfig.llm.baseUrl,
+        preferredApiFormat: currentConfig.llm.apiFormat,
+        preferredStream: currentConfig.llm.stream,
+        preferredModel: currentConfig.llm.model,
+      });
+      checks.llmConnected = probe.ok;
     } catch { /* ignore */ }
 
     return c.json(checks);
