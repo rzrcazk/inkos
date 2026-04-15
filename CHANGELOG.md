@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.3.1
+
+### Bug Fixes
+
+- **MiniMax baseUrl 修正**：从 `api.minimax.chat` 更正为 `api.minimaxi.com`（当前 OpenAI 兼容端点）
+- **多服务 baseUrl 隔离**：agent 对话中选择非默认服务时，不再泄漏默认服务的 baseUrl（如 moonshot URL 被错误用于 minimax 请求）
+- **resolveServiceModel 始终使用 preset**：不再直接使用 pi-ai 内置 model 对象（可能指向国际端点或错误的 API 格式），始终用 preset 的 baseUrl 和 api 格式构造 model
+- **agent 建书后侧边栏刷新**：通过 agent 对话建书后，侧边栏书籍列表自动刷新（之前只有 POST /books/create 才广播 `book:created`）
+- **`pnpm dev` 并行启动**：加 `--parallel`，解决 core tsc --watch 阻塞 studio 启动的问题
+
+### 改进
+
+- **MiniMax knownModels**：MiniMax 不支持 `GET /models`，改为硬编码 7 个模型（M2.7/M2.5/M2.1 及其 highspeed 版本 + M2）
+- **测试连接不再发消息**：移除 chat completion 测试，只通过 `/models` + fallback 验证，秒回
+- **custom 服务 URL 自动补 /v1**：`https://example.com`、`https://example.com/`、`https://example.com/v1` 三种写法等价
+- **agent 系统提示词**：禁止 emoji、结构化内容用列表/表格、章节索引管理指引
+
+### 测试
+
+- 新增回归测试：service-presets（MiniMax baseUrl + knownModels）、service-resolver（preset 覆盖 pi-ai）、normalizeBaseUrl
+
 ## v1.3.0
 
 ### Release Focus
