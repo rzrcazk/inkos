@@ -1036,10 +1036,10 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const service = c.req.param("service");
     const apiKey = c.req.query("apiKey") || await getServiceApiKey(root, service);
 
-    // No key = no models (don't fallback to built-in list)
+    // No key = no models
     if (!apiKey) return c.json({ models: [] });
 
-    // Fast path: services with knownModels don't need API probing
+    // Fast path: services with knownModels return immediately
     const preset = resolveServicePreset(isCustomServiceId(service) ? "custom" : service);
     if (preset?.knownModels && preset.knownModels.length > 0) {
       return c.json({
@@ -1047,25 +1047,28 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       });
     }
 
+    // Simple /models API call + fallback to pi-ai built-in list (no slow probe)
     const resolvedBaseUrl = await resolveConfiguredServiceBaseUrl(root, service);
     if (!resolvedBaseUrl) return c.json({ models: [] });
 
-    const rawConfig = await loadRawConfig(root).catch(() => ({} as Record<string, unknown>));
-    const llm = (rawConfig.llm as Record<string, unknown> | undefined) ?? {};
-    const preferredModel = typeof llm.defaultModel === "string" ? llm.defaultModel : undefined;
-    const serviceEntry = await resolveConfiguredServiceEntry(root, service);
-    const probe = await probeServiceCapabilities({
-      root,
-      service,
-      apiKey,
-      baseUrl: resolvedBaseUrl,
-      preferredApiFormat: serviceEntry?.apiFormat,
-      preferredStream: serviceEntry?.stream,
-      preferredModel,
-    });
-    return c.json({
-      models: probe.ok ? probe.models : [],
-    });
+    const modelsBase = preset?.modelsBaseUrl ?? resolvedBaseUrl;
+    let models: Array<{ id: string; name: string }> = [];
+    try {
+      const modelsUrl = modelsBase.replace(/\/$/, "") + "/models";
+      const res = await fetch(modelsUrl, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.ok) {
+        const json = await res.json() as { data?: Array<{ id: string }> };
+        models = (json.data ?? []).map((m) => ({ id: m.id, name: m.id }));
+      }
+    } catch { /* timeout or network error */ }
+    if (models.length === 0) {
+      const builtIn = await listModelsForService(service, apiKey);
+      models = builtIn.map((m) => ({ id: m.id, name: m.name }));
+    }
+    return c.json({ models });
   });
 
   // --- Project info ---
