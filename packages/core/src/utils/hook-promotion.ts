@@ -194,6 +194,14 @@ export function resolveHalfLifeChapters(hook: StoredHook): number {
 // Shared advanced_count promotion pass (used by both consolidator and runner)
 // ---------------------------------------------------------------------------
 
+/**
+ * Escape special regex characters in a string so it can be used as a
+ * literal pattern inside `new RegExp(...)`.
+ */
+export function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export interface PromotionPassResult {
   /** Whether any hook flipped to promoted=true. */
   readonly updated: boolean;
@@ -221,7 +229,7 @@ export function deriveAdvancedCountsFromSummaries(
   const hookActivityIndex = detectHookActivityColumnIndex(lines);
 
   for (const hookId of hookIds) {
-    const escaped = hookId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escaped = escapeRegex(hookId);
     const pattern = new RegExp(`\\b${escaped}\\b`, "i");
     let count = 0;
     for (const line of lines) {
