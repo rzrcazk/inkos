@@ -3,7 +3,8 @@ import { z } from "zod";
 const LLMServiceEntrySchema = z.object({
   service: z.string().min(1),
   name: z.string().min(1).optional(),
-  baseUrl: z.string().url().optional(),
+  baseUrl: z.string().url().optional().or(z.string().max(0)),
+  models: z.array(z.string()).optional(),
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().min(1).optional(),
   apiFormat: z.enum(["chat", "responses"]).optional(),

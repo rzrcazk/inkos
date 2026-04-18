@@ -10,6 +10,8 @@ export interface ServicePreset {
   readonly knownModels?: readonly string[];
   readonly piProvider?: string;
   readonly modelsBaseUrl?: string;
+  readonly allowCustomBaseUrl?: boolean;
+  readonly allowCustomModels?: boolean;
 }
 
 export const SERVICE_PRESETS: Record<string, ServicePreset> = {
