@@ -123,6 +123,7 @@ interface ServiceConfigEntry {
   service: string;
   name?: string;
   baseUrl?: string;
+  models?: string[];
   temperature?: number;
   maxTokens?: number;
   apiFormat?: "chat" | "responses";
