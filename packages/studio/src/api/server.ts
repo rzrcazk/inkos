@@ -1016,8 +1016,20 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       preferredStream: stream,
     });
 
+    // B12: 升级响应 shape 为 { probe, chat, ... }，同时保留老字段供 UI 过渡期兼容
+    const probeStatus = {
+      ok: probe.ok,
+      models: probe.models?.length ?? 0,
+      ...(probe.ok ? {} : { error: probe.error ?? "连接失败" }),
+    };
+
     if (!probe.ok) {
-      return c.json({ ok: false, error: probe.error ?? "连接失败" }, 400);
+      return c.json({
+        ok: false,
+        error: probe.error ?? "连接失败",
+        probe: probeStatus,
+        chat: null,
+      }, 400);
     }
 
     return c.json({
@@ -1031,6 +1043,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         baseUrl: probe.baseUrl,
         modelsSource: probe.modelsSource,
       },
+      // B12 新字段：两步验证状态
+      probe: probeStatus,
+      chat: null,  // probeServiceCapabilities 本身只做 probe，chat hello 在 Studio 的 follow-up 调用里单独触发
     });
   });
 
@@ -1063,7 +1078,6 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     // No key = no models
     if (!apiKey) return c.json({ models: [] });
 
-    const preset = resolveServicePreset(isCustomServiceId(service) ? "custom" : service);
     const resolvedBaseUrl = await resolveConfiguredServiceBaseUrl(root, service);
 
     // Cache by service + resolved baseUrl + apiKey fingerprint; valid for 10 min unless ?refresh=1
@@ -1075,33 +1089,20 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       }
     }
 
-    // Fast path: services with knownModels return immediately
-    if (preset?.knownModels && preset.knownModels.length > 0) {
-      const models = preset.knownModels.map((id) => ({ id, name: id }));
-      modelListCache.set(cacheKey, { models, at: Date.now() });
-      return c.json({ models });
-    }
-
-    // Simple /models API call + fallback to pi-ai built-in list (no slow probe)
-    if (!resolvedBaseUrl) return c.json({ models: [] });
-
-    const modelsBase = preset?.modelsBaseUrl ?? resolvedBaseUrl;
-    let models: Array<{ id: string; name: string }> = [];
-    try {
-      const modelsUrl = modelsBase.replace(/\/$/, "") + "/models";
-      const res = await fetch(modelsUrl, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (res.ok) {
-        const json = await res.json() as { data?: Array<{ id: string }> };
-        models = (json.data ?? []).map((m) => ({ id: m.id, name: m.id }));
-      }
-    } catch { /* timeout or network error */ }
-    if (models.length === 0) {
-      const builtIn = await listModelsForService(service, apiKey);
-      models = builtIn.map((m) => ({ id: m.id, name: m.name }));
-    }
+    // B13: 走 listModelsForService 走 live probe + bank 交叉，返回带元数据的 models
+    const enriched = await listModelsForService(
+      isCustomServiceId(service) ? "custom" : service,
+      apiKey,
+      resolvedBaseUrl ?? undefined,
+    );
+    const models = enriched.map((m) => ({
+      id: m.id,
+      name: m.name,
+      ...(m.maxOutput !== undefined ? { maxOutput: m.maxOutput } : {}),
+      ...(m.contextWindow > 0 ? { contextWindow: m.contextWindow } : {}),
+      ...(m.reasoning ? { reasoning: true } : {}),
+      ...(m.abilities ? { abilities: m.abilities } : {}),
+    }));
     modelListCache.set(cacheKey, { models, at: Date.now() });
     return c.json({ models });
   });
