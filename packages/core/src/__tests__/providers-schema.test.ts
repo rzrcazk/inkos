@@ -127,4 +127,10 @@ describe("providers structural integrity", () => {
       expect(getEndpoint(id)?.api).toBe("anthropic-messages");
     }
   });
+
+  it("R3：endpoint 不再出现 piProvider 字段（已移到 provider-to-pi-ai adapter）", () => {
+    for (const ep of getAllEndpoints()) {
+      expect((ep as any).piProvider, `endpoint=${ep.id}`).toBeUndefined();
+    }
+  });
 });
