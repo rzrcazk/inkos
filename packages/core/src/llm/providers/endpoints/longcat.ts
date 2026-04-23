@@ -1,3 +1,9 @@
+/**
+ * LongCat (美团)
+ *
+ * - 官网：https://longcat.chat/
+ * - API 文档：https://longcat.chat/platform/docs
+ */
 import type { InkosEndpoint } from "../types.js";
 
 export const LONGCAT: InkosEndpoint = {

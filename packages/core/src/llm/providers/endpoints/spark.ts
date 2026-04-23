@@ -1,3 +1,10 @@
+/**
+ * 讯飞星火 (Spark)
+ *
+ * - 官网：https://xinghuo.xfyun.cn/
+ * - 控制台 / API key：https://console.xfyun.cn/services/cbm
+ * - API 文档：https://www.xfyun.cn/doc/spark/Web.html
+ */
 import type { InkosEndpoint } from "../types.js";
 
 export const SPARK: InkosEndpoint = {

@@ -1,3 +1,9 @@
+/**
+ * 小米 MiMo
+ *
+ * - MiMo 是小米自研模型系列，目前在 PPIO / 百炼等平台开放，小米官方暂无独立 API。
+ * - 模型卡 (HF)：https://huggingface.co/XiaomiMiMo
+ */
 import type { InkosEndpoint } from "../types.js";
 
 export const XIAOMI_MIMO: InkosEndpoint = {

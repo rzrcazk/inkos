@@ -1,3 +1,9 @@
+/**
+ * 火山 CodingPlan (豆包 coding)
+ *
+ * - 官网：https://www.volcengine.com/product/ark
+ * - 火山方舟针对编程场景的 Doubao 模型套餐。
+ */
 import type { InkosEndpoint } from "../types.js";
 
 export const VOLCENGINE_CODING_PLAN: InkosEndpoint = {

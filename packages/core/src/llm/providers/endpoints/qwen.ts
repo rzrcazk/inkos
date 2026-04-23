@@ -1,3 +1,14 @@
+/**
+ * 通义千问（百炼 OpenAI 兼容接入）
+ *
+ * - 控制台：https://bailian.console.aliyun.com/
+ * - 模型文档：https://help.aliyun.com/zh/model-studio/getting-started/models
+ * - OpenAI 兼容 API：https://help.aliyun.com/zh/model-studio/developer-reference/use-openai-sdk
+ *
+ * 和 bailian endpoint 同源（同一套百炼后端），区别在 api 协议：
+ * - qwen：openai-completions（/compatible-mode/v1）
+ * - bailian：anthropic-messages（/apps/anthropic）
+ */
 import type { InkosEndpoint } from "../types.js";
 
 export const QWEN: InkosEndpoint = {
@@ -10,7 +21,16 @@ export const QWEN: InkosEndpoint = {
   defaultTemperature: 0.7,
   writingTemperature: 1,
   models: [
+    // --- Qwen3.6 系列（2026-04 发布） ---
+    { id: "qwen3.6-max-preview", maxOutput: 65536, contextWindowTokens: 262144, enabled: true, releasedAt: "2026-04-21" },
+    { id: "qwen3.6-plus", maxOutput: 65536, contextWindowTokens: 1000000, enabled: true, releasedAt: "2026-04-09" },
+    { id: "qwen3.6-flash", maxOutput: 65536, contextWindowTokens: 1000000, enabled: true, releasedAt: "2026-04-17" },
+    { id: "qwen3.6-27b", maxOutput: 65536, contextWindowTokens: 262144, releasedAt: "2026-04-23" },
+    { id: "qwen3.6-35b-a3b", maxOutput: 65536, contextWindowTokens: 262144, releasedAt: "2026-04-17" },
+    // --- 第三方代理 ---
+    { id: "kimi-k2.6", maxOutput: 32768, contextWindowTokens: 262144, enabled: true, releasedAt: "2026-04-21" },
     { id: "kimi-k2.5", maxOutput: 32768, contextWindowTokens: 262144 },
+    { id: "glm-5.1", maxOutput: 16384, contextWindowTokens: 202752, enabled: true, releasedAt: "2026-04-23" },
     { id: "MiniMax-M2.5", maxOutput: 32768, contextWindowTokens: 196608 },
     { id: "MiniMax-M2.1", maxOutput: 32768, contextWindowTokens: 204800 },
     { id: "qwen3-vl-plus", maxOutput: 32768, contextWindowTokens: 262144, releasedAt: "2025-09-23" },

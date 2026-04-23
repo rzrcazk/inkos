@@ -1,3 +1,9 @@
+/**
+ * 自定义 OpenAI 兼容端点
+ *
+ * - 任意兼容 OpenAI /v1/chat/completions 协议的服务都可通过此 endpoint 接入。
+ * - 模型列表走 live /models probe，bank 不预置任何条目。
+ */
 import type { InkosEndpoint } from "../types.js";
 
 /**

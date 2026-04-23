@@ -1,3 +1,9 @@
+/**
+ * NewAPI (自建网关)
+ *
+ * - New API (one-api fork)：https://github.com/Calcium-Ion/new-api
+ * - 自建 OpenAI 兼容网关，模型清单由部署方自定义，inkos 只提供协议对接。
+ */
 import type { InkosEndpoint } from "../types.js";
 
 /**

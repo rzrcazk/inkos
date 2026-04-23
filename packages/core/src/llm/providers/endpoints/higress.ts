@@ -1,3 +1,9 @@
+/**
+ * Higress AI Gateway
+ *
+ * - Higress：https://higress.cn/
+ * - 阿里云原生 AI 网关，代理模式 OpenAI 兼容，具体模型由用户在 Higress 侧配置。
+ */
 import type { InkosEndpoint } from "../types.js";
 
 export const HIGRESS: InkosEndpoint = {

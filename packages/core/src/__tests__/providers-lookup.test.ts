@@ -49,11 +49,11 @@ describe("lookupModel", () => {
 });
 
 describe("Layer 2 优先级（B5：PPIO vs OpenRouter 同 id）", () => {
-  it("deepseek/deepseek-r1 在 PPIO 和 OpenRouter 都有，按 PROVIDER_PRIORITY 取 ppio（第二梯队）而不是 openrouter（第三梯队）", () => {
-    const hit = lookupModel("custom", "deepseek/deepseek-r1");
+  it("deepseek/deepseek-r1-0528 在 PPIO 和 OpenRouter 都有，按 PROVIDER_PRIORITY 取 ppio（第二梯队）而不是 openrouter（第三梯队）", () => {
+    const hit = lookupModel("custom", "deepseek/deepseek-r1-0528");
     expect(hit).toBeDefined();
-    // PPIO 的 contextWindow 是 64000，OpenRouter 的是 163840
-    expect(hit?.contextWindowTokens).toBe(64000);
+    // PPIO 的 maxOutput 是 65536（reasoner），OpenRouter 的是 4096
+    expect(hit?.maxOutput).toBe(65536);
   });
 
   it("OpenRouter 专属带后缀 id（:free）命中 openrouter provider", () => {
@@ -63,9 +63,9 @@ describe("Layer 2 优先级（B5：PPIO vs OpenRouter 同 id）", () => {
   });
 
   it("PPIO 专属带斜线 id 命中 ppio provider", () => {
-    const hit = lookupModel("ppio", "deepseek/deepseek-v3");
-    expect(hit?.maxOutput).toBe(4096);
-    expect(hit?.contextWindowTokens).toBe(64000);
+    const hit = lookupModel("ppio", "deepseek/deepseek-v3.2");
+    expect(hit?.maxOutput).toBe(8192);
+    expect(hit?.contextWindowTokens).toBe(131072);
   });
 });
 
