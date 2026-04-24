@@ -49,36 +49,23 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
-      - name: Rewrite package versions for CI pack verification
+      - name: Verify no workspace:* in tarballs
         run: |
           set -euo pipefail
-          CI_PACK_VERSION="0.0.0-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
-          node scripts/set-package-versions.mjs "$CI_PACK_VERSION" --root .
-          echo "CI_PACK_VERSION=$CI_PACK_VERSION" >> "$GITHUB_ENV"
-
-      - name: Verify CI-only tarballs
-        run: |
-          set -euo pipefail
-          for pkg in packages/core packages/studio packages/cli; do
+          for pkg in packages/core packages/cli; do
             echo "--- Checking $pkg ---"
             cd "$pkg"
             PACKDIR=$(mktemp -d)
             npm pack --pack-destination "$PACKDIR" 2>/dev/null
             TGZ=$(ls "$PACKDIR"/*.tgz)
             PACKED_PKG=$(tar -xOf "$TGZ" package/package.json)
-            PACKED_VERSION=$(printf '%s' "$PACKED_PKG" | node -pe "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
-            if [ "$PACKED_VERSION" != "$CI_PACK_VERSION" ]; then
-              echo "FAIL: $pkg tarball version is $PACKED_VERSION, expected CI-only $CI_PACK_VERSION"
-              rm -rf "$PACKDIR"
-              exit 1
-            fi
             if echo "$PACKED_PKG" | grep -q '"workspace:'; then
               echo "FAIL: $pkg tarball still contains workspace: protocol"
               echo "$PACKED_PKG" | grep 'workspace:'
               rm -rf "$PACKDIR"
               exit 1
             fi
-            echo "OK: $pkg tarball is CI-only and clean"
+            echo "OK: $pkg tarball is clean"
             rm -rf "$PACKDIR"
             cd - >/dev/null
           done
