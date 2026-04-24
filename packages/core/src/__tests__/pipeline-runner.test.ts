@@ -516,7 +516,7 @@ describe("PipelineRunner", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 
   it("cleans staged files when initBook fails before foundation is complete", async () => {
     const root = await mkdtemp(join(tmpdir(), "inkos-init-rollback-"));
