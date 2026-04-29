@@ -110,6 +110,21 @@ function filterTextChatModels<T extends { readonly id: string }>(models: Readonl
   return models.filter((model) => isTextChatModelId(model.id));
 }
 
+function normalizeApiBookId(value: unknown, fieldName: string): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new ApiError(400, "INVALID_BOOK_ID", `${fieldName} must be a string`);
+  }
+  const bookId = value.trim();
+  if (!bookId) {
+    throw new ApiError(400, "INVALID_BOOK_ID", `${fieldName} cannot be blank`);
+  }
+  if (!isSafeBookId(bookId)) {
+    throw new ApiError(400, "INVALID_BOOK_ID", `Invalid ${fieldName}: "${bookId}"`);
+  }
+  return bookId;
+}
+
 function nonTextModelMessage(modelId: string): string {
   return `模型 ${modelId} 不适合文本聊天/写作。请在模型选择器中改用文本模型，例如 gemini-2.5-flash、gemini-2.5-pro 或对应服务的 chat 模型。`;
 }
@@ -1609,7 +1624,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
   app.post("/api/v1/sessions", async (c) => {
     const body = await c.req.json<{ bookId?: string | null; sessionId?: string }>().catch(() => ({}));
-    const bookId = (body as { bookId?: string | null }).bookId ?? null;
+    const bookId = normalizeApiBookId((body as { bookId?: unknown }).bookId, "bookId");
     const sessionId = (body as { sessionId?: string }).sessionId;
     // sessionId 只允许 timestamp-random 格式；防止注入任意文件名
     const safeSessionId = sessionId && /^[0-9]+-[a-z0-9]+$/.test(sessionId) ? sessionId : undefined;
@@ -1669,6 +1684,27 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         throw new ApiError(404, "SESSION_NOT_FOUND", `Session not found: ${sessionId}`);
       }
       let bookSession = loadedBookSession;
+      const requestedActiveBookId = normalizeApiBookId(activeBookId, "activeBookId");
+      const persistedBookId = normalizeApiBookId(bookSession.bookId, "session.bookId");
+      if (
+        requestedActiveBookId
+        && persistedBookId
+        && persistedBookId !== requestedActiveBookId
+      ) {
+        throw new ApiError(
+          409,
+          "SESSION_BOOK_MISMATCH",
+          `Session ${bookSession.sessionId} is bound to ${persistedBookId}, not ${requestedActiveBookId}`,
+        );
+      }
+      const agentBookId = requestedActiveBookId ?? persistedBookId;
+      if (agentBookId) {
+        try {
+          await state.loadBookConfig(agentBookId);
+        } catch {
+          throw new ApiError(404, "BOOK_NOT_FOUND", `Book not found: ${agentBookId}`);
+        }
+      }
       const streamSessionId = loadedBookSession.sessionId;
       const titleBeforeRun = bookSession.title;
       let sessionTitleBroadcasted = false;
@@ -1800,7 +1836,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
           apiKey: agentApiKey,
           pipeline,
           projectRoot: root,
-          bookId: activeBookId ?? null,
+          bookId: agentBookId,
           sessionId: bookSession.sessionId,
           language: config.language ?? "zh",
           onEvent: (event) => {
@@ -1834,7 +1870,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
                 startedAt: Date.now(),
               });
 
-              if (!activeBookId && event.toolName === "sub_agent" && agent === "architect") {
+              if (!agentBookId && event.toolName === "sub_agent" && agent === "architect") {
                 const bookId = resolveArchitectBookIdFromArgs(args);
                 if (bookId) {
                   const title = typeof args?.title === "string" && args.title.trim()
@@ -1871,7 +1907,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
                 exec.details = (event.result as { details?: unknown } | undefined)?.details;
                 if (
                   event.isError &&
-                  !activeBookId &&
+                  !agentBookId &&
                   exec.tool === "sub_agent" &&
                   exec.agent === "architect"
                 ) {
@@ -1898,7 +1934,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
       let broadcastedCreatedBookId: string | null = null;
       const finalizeCreatedBook = async (): Promise<string | null> => {
-        if (activeBookId) return null;
+        if (agentBookId) return null;
         const createdBookId = resolveCreatedBookIdFromToolExecs(collectedToolExecs);
         if (!createdBookId) return null;
         if (broadcastedCreatedBookId === createdBookId) return createdBookId;
@@ -1950,7 +1986,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
             fallbackClient,
             reqModel ?? config.llm.model,
             [
-              { role: "system", content: buildAgentSystemPrompt(activeBookId ?? null, config.language ?? "zh") },
+              { role: "system", content: buildAgentSystemPrompt(agentBookId, config.language ?? "zh") },
               { role: "user", content: instruction },
             ],
             { maxTokens: 256 },

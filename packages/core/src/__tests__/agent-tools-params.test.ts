@@ -95,7 +95,7 @@ describe("writer agent — wordCount passthrough", () => {
   beforeEach(() => {
     writeNextChapterMock = vi.fn(async () => ({ wordCount: 3000 }));
     const mockPipeline = { writeNextChapter: writeNextChapterMock } as any;
-    tool = createSubAgentTool(mockPipeline, "existing-book");
+    tool = createSubAgentTool(mockPipeline, "my-book");
   });
 
   it("passes chapterWordCount as wordCount", async () => {
@@ -118,7 +118,7 @@ describe("auditor agent — rich return value", () => {
         { severity: "critical", description: "Name inconsistency" },
       ],
     }));
-    const tool = createSubAgentTool({ auditDraft: auditDraftMock } as any, "book");
+    const tool = createSubAgentTool({ auditDraft: auditDraftMock } as any, "my-book");
     const result = await tool.execute("tc1", { agent: "auditor", instruction: "Audit", bookId: "my-book", chapterNumber: 3 });
     const text = (result.content[0] as { type: "text"; text: string }).text;
     expect(text).toContain("FAILED");
@@ -135,7 +135,7 @@ describe("reviser agent — mode field", () => {
 
   beforeEach(() => {
     reviseDraftMock = vi.fn(async () => ({}));
-    tool = createSubAgentTool({ reviseDraft: reviseDraftMock } as any, "book");
+    tool = createSubAgentTool({ reviseDraft: reviseDraftMock } as any, "my-book");
   });
 
   it("uses mode param directly", async () => {

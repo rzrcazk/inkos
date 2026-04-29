@@ -80,7 +80,22 @@ describe("buildAgentSystemPrompt", () => {
       expect(prompt).toContain("write_truth_file");
       expect(prompt).toContain("用户要求重写/精修已有章节");
       expect(prompt).toContain("reviser");
-      expect(prompt).toContain("也可以直接使用 edit / write");
+      expect(prompt).toContain("edit / write 是高权限兜底工具");
+    });
+
+    it("with-book prompt defines active-book and raw-tool boundaries", () => {
+      const prompt = buildAgentSystemPrompt("my-book", "zh");
+      expect(prompt).toContain("当前书由 session 绑定");
+      expect(prompt).toContain("业务工具不要传其他 bookId");
+      expect(prompt).toContain("raw file tools");
+      expect(prompt).toContain("高权限兜底");
+    });
+
+    it("with-book prompt names Phase 5 canonical truth paths", () => {
+      const prompt = buildAgentSystemPrompt("my-book", "zh");
+      expect(prompt).toContain("outline/story_frame.md");
+      expect(prompt).toContain("outline/volume_map.md");
+      expect(prompt).toContain("roles/major/<name>.md");
     });
 
     it("Chinese prompt warns NOT to call architect", () => {
@@ -91,6 +106,14 @@ describe("buildAgentSystemPrompt", () => {
     it("English prompt warns NOT to call architect", () => {
       const prompt = buildAgentSystemPrompt("novel", "en");
       expect(prompt).toContain("Do NOT call architect");
+    });
+
+    it("English with-book prompt defines active-book and raw-tool boundaries", () => {
+      const prompt = buildAgentSystemPrompt("novel", "en");
+      expect(prompt).toContain("The active book is session-bound");
+      expect(prompt).toContain("Do not pass another bookId");
+      expect(prompt).toContain("raw file tools");
+      expect(prompt).toContain("high-privilege fallback");
     });
 
     it("Chinese with-book prompt forbids emoji", () => {

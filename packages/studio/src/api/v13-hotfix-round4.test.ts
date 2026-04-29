@@ -24,7 +24,9 @@ const logger = {
   error: vi.fn(),
 };
 
-vi.mock("@actalk/inkos-core", () => {
+vi.mock("@actalk/inkos-core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@actalk/inkos-core")>();
+
   class MockStateManager {
     constructor(private readonly root: string) {}
     async listBooks(): Promise<string[]> { return []; }
@@ -65,6 +67,7 @@ vi.mock("@actalk/inkos-core", () => {
     createLLMClient: vi.fn(() => ({})),
     createLogger: vi.fn(() => logger),
     computeAnalytics: vi.fn(() => ({})),
+    isSafeBookId: actual.isSafeBookId,
     chatCompletion: vi.fn(),
     loadProjectConfig: loadProjectConfigMock,
     GLOBAL_ENV_PATH: join(tmpdir(), "inkos-global.env"),
