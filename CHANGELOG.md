@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.3.7
+
+### Release Focus
+
+长篇写作质量收紧：把近期验证过的网文写法规则落到 Writer、Planner、Architect 与后置校验中，重点改善开篇抓人、章节密度、伏笔兑现、段落节奏和架构稿完整性。
+
+### Improvements
+
+- **网文写作规则入链路**：Writer prompt 新增看点密度、移动端段落、开篇第一屏、章节断章和人物行动动机等写作约束，让模型更少写空转铺垫和报告式正文
+- **Planner / Architect 对齐写作目标**：章节规划和书籍架构稿更明确地承接黄金开篇、章节目标、hook 账和段落式 foundation 输出要求
+- **Hook 兑现更具体**：hook ledger 要求 advance / resolve 项在正文里有可定位的动作、物件、对话或事件兑现，减少“账本里有、正文里没有”的断层
+- **段落密度规则收紧**：强调密度来自语义和场景推进，不是把正文切成电报体；连续短段会被后置规则识别
+
+### Bug Fixes
+
+- 修复 Architect 在扩展输出时可能漏掉 5 个 foundation SECTION 块的问题
+- 修复 hook ledger payoff 检查过于宽松，导致侧面暗示也可能被误判为兑现的问题
+- 修复写作 prompt 对段落尺寸描述不够明确，模型容易在“1-3 点密度”规则下过度碎段的问题
+
 ## v1.3.6
 
 ### Release Focus
