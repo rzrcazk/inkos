@@ -18,6 +18,15 @@ vi.mock("@actalk/inkos-core", async () => {
   const actual = await vi.importActual<typeof import("@actalk/inkos-core")>("@actalk/inkos-core");
   class PipelineRunnerMock {
     constructor(_config: unknown) {}
+    async initBook(_book: unknown, _options?: unknown) {}
+    async writeNextChapter(_bookId: string) {
+      return {
+        chapterNumber: 1,
+        title: "雨夜",
+        wordCount: 1200,
+        status: "ready-for-review",
+      };
+    }
   }
   return {
     ...actual,
@@ -119,5 +128,86 @@ describe("tui agent session bridge", () => {
       role: "assistant",
       content: "这是 agent 直接返回的回复。",
     }));
+  });
+
+  it("stores the created book from architect tool results as the active TUI book", async () => {
+    runAgentSessionMock.mockResolvedValue({
+      responseText: "《夜港》已创建成功。",
+      messages: [
+        {
+          role: "toolResult",
+          details: { kind: "book_created", bookId: "night-harbor", title: "夜港" },
+        },
+        { role: "assistant", content: "《夜港》已创建成功。" },
+      ],
+    });
+
+    const { processTuiAgentInput } = await import("../tui/agent-input.js");
+    const session = createProjectSession(projectRoot);
+
+    const result = await processTuiAgentInput({
+      projectRoot,
+      input: "创建《夜港》",
+      session,
+    });
+
+    expect(result.session.activeBookId).toBe("night-harbor");
+    const persisted = await loadProjectSession(projectRoot);
+    expect(persisted.activeBookId).toBe("night-harbor");
+  });
+
+  it("routes explicit create-book instructions directly to shared book creation", async () => {
+    const initBookSpy = vi.spyOn(
+      (await import("@actalk/inkos-core")).PipelineRunner.prototype as any,
+      "initBook",
+    );
+    const { processTuiAgentInput } = await import("../tui/agent-input.js");
+    const session = createProjectSession(projectRoot);
+
+    const result = await processTuiAgentInput({
+      projectRoot,
+      input: "创建一本10章中文都市悬疑短篇，标题《雾灯小巷》，目标平台番茄，每章约1200字。信息足够，请直接建书。",
+      session,
+    });
+
+    expect(runAgentSessionMock).not.toHaveBeenCalled();
+    expect(initBookSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "雾灯小巷",
+        title: "雾灯小巷",
+        genre: "urban",
+        platform: "tomato",
+        targetChapters: 10,
+        chapterWordCount: 1200,
+      }),
+      expect.objectContaining({
+        externalContext: expect.stringContaining("雾灯小巷"),
+      }),
+    );
+    expect(result.session.activeBookId).toBe("雾灯小巷");
+    expect(result.responseText).toContain("已创建");
+    const persisted = await loadProjectSession(projectRoot);
+    expect(persisted.activeBookId).toBe("雾灯小巷");
+  });
+
+  it("routes write-next instructions directly to the writer when a book is active", async () => {
+    const { processTuiAgentInput } = await import("../tui/agent-input.js");
+    const session = {
+      ...createProjectSession(projectRoot),
+      activeBookId: "night-harbor",
+    };
+
+    const result = await processTuiAgentInput({
+      projectRoot,
+      input: "写第1章",
+      session,
+    });
+
+    expect(runAgentSessionMock).not.toHaveBeenCalled();
+    expect(result.responseText).toContain("第 1 章");
+    expect(result.responseText).toContain("雨夜");
+    const persisted = await loadProjectSession(projectRoot);
+    expect(persisted.activeBookId).toBe("night-harbor");
+    expect(persisted.activeChapterNumber).toBe(1);
   });
 });

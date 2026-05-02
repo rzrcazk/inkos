@@ -9,7 +9,7 @@ import {
   brightCyan, brightGreen, brightWhite,
 } from "./ansi.js";
 import { resolveTuiLocale, type TuiLocale } from "./i18n.js";
-import { GLOBAL_ENV_PATH } from "../utils.js";
+import { GLOBAL_ENV_PATH, loadConfig } from "../utils.js";
 import { ensureProjectGitignore } from "../project-bootstrap.js";
 
 const PROVIDERS = ["openai", "anthropic", "custom"] as const;
@@ -301,6 +301,20 @@ export interface ModelInfo {
 }
 
 export async function detectModelInfo(projectRoot: string): Promise<ModelInfo | undefined> {
+  try {
+    const config = await loadConfig({ requireApiKey: false, projectRoot });
+    const service = config.llm.service?.trim();
+    const provider = service || config.llm.provider || "openai";
+    const model = config.llm.model?.trim() || "unknown";
+    return {
+      provider,
+      model,
+      baseUrl: config.llm.baseUrl ?? "",
+    };
+  } catch {
+    // Fall back to legacy env parsing below.
+  }
+
   const paths = [join(projectRoot, ".env"), GLOBAL_ENV_PATH];
   for (const p of paths) {
     const info = await parseEnvModel(p);
