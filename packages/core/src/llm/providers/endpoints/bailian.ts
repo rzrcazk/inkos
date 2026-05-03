@@ -48,7 +48,6 @@ export const BAILIAN: InkosEndpoint = {
     // --- Qwen 通用 ---
     { id: "qwen3-max", maxOutput: 65536, contextWindowTokens: 262144, enabled: true, releasedAt: "2026-01-23" },
     { id: "qwen3-max-preview", maxOutput: 65536, contextWindowTokens: 262144, releasedAt: "2025-10-30" },
-    { id: "qwen-max", maxOutput: 8192, contextWindowTokens: 131072 },
     { id: "qwen-plus", maxOutput: 32768, contextWindowTokens: 1000000 },
     { id: "qwen-flash", maxOutput: 32768, contextWindowTokens: 1000000, releasedAt: "2025-07-28" },
     { id: "qwen-turbo", maxOutput: 16384, contextWindowTokens: 1000000, releasedAt: "2025-07-15" },

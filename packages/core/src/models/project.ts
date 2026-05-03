@@ -25,7 +25,7 @@ export const LLMConfigSchema = z.object({
   thinkingBudget: z.number().int().min(0).default(0),
   extra: z.record(z.unknown()).optional(),
   headers: z.record(z.string()).optional(),
-  apiFormat: z.enum(["chat", "responses"]).default("chat"),
+  apiFormat: z.enum(["chat", "responses", "anthropic"]).default("chat"),
   stream: z.boolean().default(true),
   services: z.array(LLMServiceEntrySchema).optional(),
   routes: z.record(z.object({

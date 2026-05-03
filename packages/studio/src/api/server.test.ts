@@ -1490,18 +1490,18 @@ describe("createStudioServer daemon lifecycle", () => {
         services: [
           { service: "bailian", apiFormat: "chat", stream: false },
         ],
-        defaultModel: "qwen-max",
+        defaultModel: "qwen3.6-plus",
       },
     }, null, 2), "utf-8");
     loadSecretsMock.mockResolvedValue({ services: { bailian: { apiKey: "sk-bailian" } } });
     const bailianEndpoint = endpointMocks.find((ep) => ep.id === "bailian");
     expect(bailianEndpoint).toBeDefined();
     Object.assign(bailianEndpoint!, {
-      checkModel: "qwen-max",
+      checkModel: "qwen3.6-plus",
       api: "anthropic-messages",
       baseUrl: "https://dashscope.aliyuncs.com/apps/anthropic",
       models: [
-        { id: "qwen-max", maxOutput: 8192, contextWindowTokens: 131072, enabled: true },
+        { id: "qwen3.6-plus", maxOutput: 65536, contextWindowTokens: 1000000, enabled: true },
         { id: "kimi-k2.5", maxOutput: 32768, contextWindowTokens: 262144, enabled: true },
       ],
     });
@@ -1524,7 +1524,7 @@ describe("createStudioServer daemon lifecycle", () => {
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
     createLLMClientMock.mockImplementation(((cfg: unknown) => cfg) as any);
     chatCompletionMock.mockImplementation(async (client: any, model: string) => {
-      if (client.provider === "anthropic" && client.baseUrl === "https://dashscope.aliyuncs.com/apps/anthropic" && model === "qwen-max") {
+      if (client.provider === "anthropic" && client.baseUrl === "https://dashscope.aliyuncs.com/apps/anthropic" && model === "qwen3.6-plus") {
         return {
           content: "pong",
           usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
@@ -1548,7 +1548,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
     expect(response.status).toBe(200);
     const body = await response.json() as { models: Array<{ id: string }> };
-    expect(body.models.map((m) => m.id)).toEqual(["qwen-max", "kimi-k2.5"]);
+    expect(body.models.map((m) => m.id)).toEqual(["qwen3.6-plus", "kimi-k2.5"]);
     expect(body.models.some((m) => m.id === "kimi-k2.6")).toBe(false);
     expect(body.models.some((m) => m.id === "deepseek-v3.2")).toBe(false);
     expect(fetchMock).not.toHaveBeenCalledWith(
