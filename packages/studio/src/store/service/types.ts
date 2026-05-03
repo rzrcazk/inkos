@@ -10,6 +10,8 @@ export interface ServiceInfo {
   readonly label: string;
   readonly group?: EndpointGroup;
   readonly connected: boolean;
+  readonly baseUrl?: string;
+  readonly api?: string;
 }
 
 export interface ModelInfo {

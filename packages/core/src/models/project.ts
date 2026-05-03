@@ -6,7 +6,7 @@ const LLMServiceEntrySchema = z.object({
   name: z.string().min(1).optional(),
   baseUrl: z.string().url().optional(),
   temperature: z.number().min(0).max(2).optional(),
-  apiFormat: z.enum(["chat", "responses"]).optional(),
+  apiFormat: z.enum(["chat", "responses", "anthropic"]).optional(),
   stream: z.boolean().optional(),
 });
 

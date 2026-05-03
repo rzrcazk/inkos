@@ -6,7 +6,7 @@ export interface ServiceDetailModelInfo {
 }
 
 export interface ServiceDetailDetectedConfig {
-  readonly apiFormat?: "chat" | "responses";
+  readonly apiFormat?: "chat" | "responses" | "anthropic";
   readonly stream?: boolean;
   readonly baseUrl?: string;
   readonly modelsSource?: "api" | "fallback";
@@ -34,7 +34,7 @@ export async function probeServiceForDetail(
   serviceId: string,
   body: {
     readonly apiKey: string;
-    readonly apiFormat: "chat" | "responses";
+    readonly apiFormat: "chat" | "responses" | "anthropic";
     readonly stream: boolean;
     readonly baseUrl?: string;
   },
@@ -56,13 +56,12 @@ export async function rehydrateServiceConnectionStatus(args: {
   readonly shouldVerify: boolean;
   readonly isCustom: boolean;
   readonly baseUrl: string;
-  readonly apiFormat: "chat" | "responses";
+  readonly apiFormat: "chat" | "responses" | "anthropic";
   readonly stream: boolean;
   readonly fetchJsonImpl?: JsonFetcher;
 }): Promise<{
   readonly apiKey: string;
   readonly status: ServiceDetailConnectionStatus;
-  readonly detectedModel: string;
   readonly detectedConfig: ServiceDetailDetectedConfig | null;
 }> {
   const fetchJsonImpl = args.fetchJsonImpl ?? fetchJson;
@@ -74,7 +73,6 @@ export async function rehydrateServiceConnectionStatus(args: {
   return {
     apiKey,
     status: { state: "idle" },
-    detectedModel: "",
     detectedConfig: null,
   };
 }
@@ -100,14 +98,13 @@ export async function saveServiceConfig(args: {
   readonly resolvedCustomName: string;
   readonly apiKey: string;
   readonly baseUrl: string;
-  readonly apiFormat: "chat" | "responses";
+  readonly apiFormat: "chat" | "responses" | "anthropic";
   readonly stream: boolean;
   readonly temperature: string;
-  readonly detectedModel: string;
+  readonly selectedModels?: readonly string[];
   readonly fetchJsonImpl?: JsonFetcher;
 }): Promise<{
   readonly status: ServiceDetailConnectionStatus;
-  readonly detectedModel: string;
   readonly detectedConfig: ServiceDetailDetectedConfig | null;
 }> {
   const fetchJsonImpl = args.fetchJsonImpl ?? fetchJson;
@@ -117,14 +114,12 @@ export async function saveServiceConfig(args: {
   if (!trimmedKey) {
     return {
       status: { state: "error", message: "请先输入 API Key" },
-      detectedModel: "",
       detectedConfig: null,
     };
   }
-  if (args.isCustom && !trimmedBaseUrl) {
+  if (!trimmedBaseUrl) {
     return {
       status: { state: "error", message: "请先填写 Base URL" },
-      detectedModel: "",
       detectedConfig: null,
     };
   }
@@ -135,12 +130,11 @@ export async function saveServiceConfig(args: {
       apiKey: trimmedKey,
       apiFormat: args.apiFormat,
       stream: args.stream,
-      ...(args.isCustom ? { baseUrl: trimmedBaseUrl } : {}),
+      baseUrl: trimmedBaseUrl,
     }, { fetchJsonImpl });
   } catch (error) {
     return {
       status: { state: "error", message: error instanceof Error ? error.message : "连接失败" },
-      detectedModel: "",
       detectedConfig: null,
     };
   }
@@ -148,16 +142,14 @@ export async function saveServiceConfig(args: {
   if (!probe.ok) {
     return {
       status: { state: "error", message: probe.error ?? "连接失败" },
-      detectedModel: "",
       detectedConfig: null,
     };
   }
 
-  const detectedModel = probe.selectedModel ?? args.detectedModel;
   const detectedConfig = probe.detected ?? null;
   const savedApiFormat = detectedConfig?.apiFormat ?? args.apiFormat;
   const savedStream = typeof detectedConfig?.stream === "boolean" ? detectedConfig.stream : args.stream;
-  const savedBaseUrl = args.isCustom ? (detectedConfig?.baseUrl ?? trimmedBaseUrl) : undefined;
+  const savedBaseUrl = trimmedBaseUrl;
 
   await fetchJsonImpl(`/services/${encodeURIComponent(args.effectiveServiceId)}/secret`, {
     method: "PUT",
@@ -170,7 +162,7 @@ export async function saveServiceConfig(args: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       service: args.effectiveServiceId,
-      ...(detectedModel ? { defaultModel: detectedModel } : {}),
+      ...(args.selectedModels && args.selectedModels.length > 0 ? { selectedModels: args.selectedModels } : {}),
       services: [
         {
           service: args.isCustom ? "custom" : args.serviceId,
@@ -180,7 +172,9 @@ export async function saveServiceConfig(args: {
           ...(args.isCustom ? {
             name: args.resolvedCustomName,
             baseUrl: savedBaseUrl,
-          } : {}),
+          } : {
+            baseUrl: savedBaseUrl,
+          }),
         },
       ],
     }),
@@ -188,7 +182,6 @@ export async function saveServiceConfig(args: {
 
   return {
     status: { state: "connected", models: probe.models ?? [] },
-    detectedModel,
     detectedConfig,
   };
 }

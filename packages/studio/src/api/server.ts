@@ -241,8 +241,9 @@ interface ServiceConfigEntry {
   name?: string;
   baseUrl?: string;
   temperature?: number;
-  apiFormat?: "chat" | "responses";
+  apiFormat?: "chat" | "responses" | "anthropic";
   stream?: boolean;
+  selectedModels?: string[];
 }
 
 type LLMConfigSource = "env" | "studio";
@@ -266,7 +267,7 @@ interface ServiceProbeResult {
   ok: boolean;
   models: Array<{ id: string; name: string }>;
   selectedModel?: string;
-  apiFormat?: "chat" | "responses";
+  apiFormat?: "chat" | "responses" | "anthropic";
   stream?: boolean;
   baseUrl?: string;
   modelsSource?: "api" | "fallback";
@@ -338,8 +339,9 @@ function normalizeServiceEntry(serviceId: string, value: Record<string, unknown>
       name: decodeURIComponent(serviceId.slice("custom:".length)),
       ...(typeof value.baseUrl === "string" && value.baseUrl.length > 0 ? { baseUrl: value.baseUrl } : {}),
       ...(typeof value.temperature === "number" ? { temperature: value.temperature } : {}),
-      ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
+      ...(value.apiFormat === "chat" || value.apiFormat === "responses" || value.apiFormat === "anthropic" ? { apiFormat: value.apiFormat } : {}),
       ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
+      ...(Array.isArray(value.selectedModels) ? { selectedModels: value.selectedModels.filter((m): m is string => typeof m === "string") } : {}),
     };
   }
 
@@ -349,16 +351,19 @@ function normalizeServiceEntry(serviceId: string, value: Record<string, unknown>
       ...(typeof value.name === "string" && value.name.length > 0 ? { name: value.name } : {}),
       ...(typeof value.baseUrl === "string" && value.baseUrl.length > 0 ? { baseUrl: value.baseUrl } : {}),
       ...(typeof value.temperature === "number" ? { temperature: value.temperature } : {}),
-      ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
+      ...(value.apiFormat === "chat" || value.apiFormat === "responses" || value.apiFormat === "anthropic" ? { apiFormat: value.apiFormat } : {}),
       ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
+      ...(Array.isArray(value.selectedModels) ? { selectedModels: value.selectedModels.filter((m): m is string => typeof m === "string") } : {}),
     };
   }
 
   return {
     service: serviceId,
+    ...(typeof value.baseUrl === "string" && value.baseUrl.length > 0 ? { baseUrl: value.baseUrl } : {}),
     ...(typeof value.temperature === "number" ? { temperature: value.temperature } : {}),
-    ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
+    ...(value.apiFormat === "chat" || value.apiFormat === "responses" || value.apiFormat === "anthropic" ? { apiFormat: value.apiFormat } : {}),
     ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
+    ...(Array.isArray(value.selectedModels) ? { selectedModels: value.selectedModels.filter((m): m is string => typeof m === "string") } : {}),
   };
 }
 
@@ -375,8 +380,9 @@ function normalizeServiceConfig(raw: unknown): ServiceConfigEntry[] {
         ...(typeof entry.name === "string" && entry.name.length > 0 ? { name: entry.name } : {}),
         ...(typeof entry.baseUrl === "string" && entry.baseUrl.length > 0 ? { baseUrl: entry.baseUrl } : {}),
         ...(typeof entry.temperature === "number" ? { temperature: entry.temperature } : {}),
-        ...(entry.apiFormat === "chat" || entry.apiFormat === "responses" ? { apiFormat: entry.apiFormat } : {}),
+        ...(entry.apiFormat === "chat" || entry.apiFormat === "responses" || entry.apiFormat === "anthropic" ? { apiFormat: entry.apiFormat } : {}),
         ...(typeof entry.stream === "boolean" ? { stream: entry.stream } : {}),
+        ...(Array.isArray(entry.selectedModels) ? { selectedModels: entry.selectedModels.filter((m): m is string => typeof m === "string") } : {}),
       }));
   }
 
@@ -484,12 +490,12 @@ async function resolveConfiguredServiceEntry(root: string, serviceId: string): P
 }
 
 function buildProbePlans(
-  preferredApiFormat: "chat" | "responses" | undefined,
+  preferredApiFormat: "chat" | "responses" | "anthropic" | undefined,
   preferredStream: boolean | undefined,
-): Array<{ apiFormat: "chat" | "responses"; stream: boolean }> {
-  const candidates: Array<{ apiFormat: "chat" | "responses"; stream: boolean }> = [];
+): Array<{ apiFormat: "chat" | "responses" | "anthropic"; stream: boolean }> {
+  const candidates: Array<{ apiFormat: "chat" | "responses" | "anthropic"; stream: boolean }> = [];
   const seen = new Set<string>();
-  const push = (apiFormat: "chat" | "responses", stream: boolean) => {
+  const push = (apiFormat: "chat" | "responses" | "anthropic", stream: boolean) => {
     const key = `${apiFormat}:${stream ? "1" : "0"}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -500,13 +506,12 @@ function buildProbePlans(
     push(preferredApiFormat, preferredStream ?? false);
     push(preferredApiFormat, !(preferredStream ?? false));
   }
-  const alternate = preferredApiFormat === "responses" ? "chat" : "responses";
-  push(alternate, false);
-  push(alternate, true);
-  push("chat", false);
-  push("chat", true);
-  push("responses", false);
-  push("responses", true);
+  // Try other formats as fallback
+  for (const fmt of ["anthropic", "chat", "responses"] as const) {
+    if (fmt === preferredApiFormat) continue;
+    push(fmt, false);
+    push(fmt, true);
+  }
   return candidates;
 }
 
@@ -545,7 +550,7 @@ function formatServiceProbeError(args: {
   readonly label?: string;
   readonly baseUrl: string;
   readonly model?: string;
-  readonly apiFormat?: "chat" | "responses";
+  readonly apiFormat?: "chat" | "responses" | "anthropic";
   readonly stream?: boolean;
   readonly error: string;
 }): string {
@@ -558,7 +563,7 @@ function formatServiceProbeError(args: {
   const context = [
     `服务商：${args.label ?? args.service}`,
     `测试模型：${args.model ?? "未确定"}`,
-    `协议：${args.apiFormat === "responses" ? "Responses" : "Chat / Completions"}${typeof args.stream === "boolean" ? `，${args.stream ? "流式" : "非流式"}` : ""}`,
+    `协议：${args.apiFormat === "responses" ? "Responses" : args.apiFormat === "anthropic" ? "Anthropic Messages" : "Chat / Completions"}${typeof args.stream === "boolean" ? `，${args.stream ? "流式" : "非流式"}` : ""}`,
     `Base URL：${args.baseUrl}`,
   ].join("\n");
 
@@ -638,7 +643,7 @@ async function probeServiceCapabilities(args: {
   service: string;
   apiKey: string;
   baseUrl: string;
-  preferredApiFormat?: "chat" | "responses";
+  preferredApiFormat?: "chat" | "responses" | "anthropic";
   preferredStream?: boolean;
   preferredModel?: string;
   proxyUrl?: string;
@@ -1260,6 +1265,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       label: ep.label,
       group: ep.group,
       connected: Boolean(secrets.services[ep.id]?.apiKey),
+      baseUrl: ep.baseUrl,
+      api: ep.api,
     }));
 
     // Add custom services from inkos.json
@@ -1329,7 +1336,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const { apiKey, baseUrl, apiFormat, stream } = await c.req.json<{
       apiKey: string;
       baseUrl?: string;
-      apiFormat?: "chat" | "responses";
+      apiFormat?: "chat" | "responses" | "anthropic";
       stream?: boolean;
     }>();
 
@@ -1411,6 +1418,24 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     return c.json({
       apiKey: secrets.services[service]?.apiKey ?? "",
     });
+  });
+
+  app.get("/api/v1/services/:service/models/bank", async (c) => {
+    const service = c.req.param("service");
+    const endpoint = getAllEndpoints().find((ep) => ep.id === service);
+    if (!endpoint) {
+      return c.json({ models: [] });
+    }
+    const models = endpoint.models
+      .filter((m) => m.enabled !== false)
+      .filter((m) => isTextChatModelId(m.id))
+      .map((m) => ({
+        id: m.id,
+        name: m.id,
+        ...(typeof m.maxOutput === "number" ? { maxOutput: m.maxOutput } : {}),
+        ...(m.contextWindowTokens > 0 ? { contextWindow: m.contextWindowTokens } : {}),
+      }));
+    return c.json({ models });
   });
 
   app.get("/api/v1/services/models", async (c) => {

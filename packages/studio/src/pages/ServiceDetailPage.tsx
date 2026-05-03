@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { fetchJson } from "../hooks/use-api";
 import { useServiceStore } from "../store/service";
 import { Eye, EyeOff, Loader2, ArrowLeft } from "lucide-react";
@@ -9,8 +9,12 @@ import {
   saveServiceConfig,
   type ServiceDetailConnectionStatus as ConnectionStatus,
   type ServiceDetailDetectedConfig as DetectedConfig,
-  type ServiceDetailModelInfo as ModelInfo,
+  type ServiceDetailModelInfo,
 } from "./service-detail-state";
+import type { ServiceInfo } from "../store/service/types";
+
+type BankModel = { id: string; name?: string; maxOutput?: number; contextWindow?: number };
+type DisplayModel = ServiceDetailModelInfo | BankModel;
 
 interface Nav {
   toServices: () => void;
@@ -48,16 +52,23 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
   const [customName, setCustomName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [temperature, setTemperature] = useState("0.7");
-  const [apiFormat, setApiFormat] = useState<"chat" | "responses">("chat");
+  const [apiFormat, setApiFormat] = useState<"chat" | "responses" | "anthropic">("chat");
   const [stream, setStream] = useState(true);
-  const [detectedModel, setDetectedModel] = useState<string>("");
-  const [detectedConfig, setDetectedConfig] = useState<DetectedConfig | null>(null);
+  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
+  const [bankModels, setBankModels] = useState<BankModel[]>([]);
 
   // -- Unified connection status --
   const [status, setStatus] = useState<ConnectionStatus>({ state: "idle" });
 
+  // Initialize form from preset + saved config
   useEffect(() => {
     let cancelled = false;
+    const presetSvc = services.find((s) => s.service === serviceId);
+    if (presetSvc?.baseUrl) setBaseUrl(presetSvc.baseUrl);
+    if (presetSvc?.api === "anthropic-messages") setApiFormat("anthropic");
+    else if (presetSvc?.api === "openai-responses") setApiFormat("responses");
+    else setApiFormat("chat");
+
     void fetchJson<{ services: Array<Record<string, unknown>> }>("/services/config")
       .then((data) => {
         if (cancelled) return;
@@ -65,15 +76,36 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
         if (!matched) return;
         if (isCustom) {
           setCustomName(String(matched.name ?? persistedCustomName));
-          setBaseUrl(String(matched.baseUrl ?? ""));
         }
+        if (typeof matched.baseUrl === "string" && matched.baseUrl) setBaseUrl(matched.baseUrl);
         if (typeof matched.temperature === "number") setTemperature(String(matched.temperature));
-        if (matched.apiFormat === "chat" || matched.apiFormat === "responses") setApiFormat(matched.apiFormat);
+        if (matched.apiFormat === "chat" || matched.apiFormat === "responses" || matched.apiFormat === "anthropic") setApiFormat(matched.apiFormat);
         if (typeof matched.stream === "boolean") setStream(matched.stream);
+        const savedModels = matched.selectedModels;
+        if (Array.isArray(savedModels)) {
+          setSelectedModels(new Set(savedModels.filter((m): m is string => typeof m === "string")));
+        }
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [isCustom, persistedCustomName, serviceId]);
+  }, [isCustom, persistedCustomName, serviceId, services]);
+
+  // Fetch bank models on mount
+  const didInitBankModels = useRef(false);
+  useEffect(() => {
+    if (isCustom || didInitBankModels.current) return;
+    didInitBankModels.current = true;
+    let cancelled = false;
+    fetchJson<{ models: BankModel[] }>(`/services/${encodeURIComponent(serviceId)}/models/bank`)
+      .then((data) => {
+        if (cancelled) return;
+        const models = data.models ?? [];
+        setBankModels(models);
+        setSelectedModels(new Set(models.map((m) => m.id)));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isCustom, serviceId]);
 
   const resolvedCustomName = persistedCustomName || customName.trim() || "Custom";
   const effectiveServiceId = isCustom ? `custom:${resolvedCustomName}` : serviceId;
@@ -93,8 +125,6 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
       .then((result) => {
         if (cancelled) return;
         setApiKey(result.apiKey);
-        setDetectedModel(result.detectedModel);
-        setDetectedConfig(result.detectedConfig);
         setStatus(result.status);
         if (result.status.state === "connected") {
           setStoreModels(effectiveServiceId, result.status.models);
@@ -121,6 +151,9 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
   const isConnected = Boolean(svc?.connected);
   const models = status.state === "connected" ? status.models : (storeModels ?? []);
   const isBusy = status.state === "testing" || status.state === "saving";
+  const allModels: DisplayModel[] = models.length > 0
+    ? models.map((m) => ({ ...m }))
+    : bankModels;
 
   // -- Handlers --
   const handleTest = async () => {
@@ -129,7 +162,7 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
       setStatus({ state: "error", message: "请先输入 API Key" });
       return;
     }
-    if (isCustom && !baseUrl.trim()) {
+    if (!baseUrl.trim()) {
       setStatus({ state: "error", message: "请先填写 Base URL" });
       return;
     }
@@ -140,17 +173,20 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
         apiKey: trimmedKey,
         apiFormat,
         stream,
-        ...(isCustom ? { baseUrl: baseUrl.trim() } : {}),
+        baseUrl: baseUrl.trim(),
       });
       if (result.ok) {
-        const models = result.models ?? [];
+        const probedModels = result.models ?? [];
         if (result.detected?.apiFormat) setApiFormat(result.detected.apiFormat);
         if (typeof result.detected?.stream === "boolean") setStream(result.detected.stream);
-        if (isCustom && result.detected?.baseUrl) setBaseUrl(result.detected.baseUrl);
-        setDetectedModel(result.selectedModel ?? "");
-        setDetectedConfig(result.detected ?? null);
-        setStatus({ state: "connected", models });
-        setStoreModels(effectiveServiceId, models); // Write to global store
+        if (result.detected?.baseUrl) setBaseUrl(result.detected.baseUrl);
+        setStatus({ state: "connected", models: probedModels });
+        setStoreModels(effectiveServiceId, probedModels);
+        const allModelIds = new Set([...selectedModels, ...probedModels.map((m) => m.id)]);
+        if (allModelIds.size === 0) {
+          for (const m of bankModels) allModelIds.add(m.id);
+        }
+        setSelectedModels(allModelIds);
       } else {
         setStatus({ state: "error", message: result.error ?? "连接失败" });
         clearStoreModels(effectiveServiceId);
@@ -163,7 +199,7 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
   const handleSave = async () => {
     const trimmedKey = apiKey.trim();
     setApiKey(trimmedKey);
-    if (isCustom && !baseUrl.trim()) {
+    if (!baseUrl.trim()) {
       setStatus({ state: "error", message: "请先填写 Base URL" });
       return;
     }
@@ -179,14 +215,12 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
         apiFormat,
         stream,
         temperature,
-        detectedModel,
+        selectedModels: Array.from(selectedModels),
       });
       if (result.status.state === "connected") {
         if (result.detectedConfig?.apiFormat) setApiFormat(result.detectedConfig.apiFormat);
         if (typeof result.detectedConfig?.stream === "boolean") setStream(result.detectedConfig.stream);
-        if (isCustom && result.detectedConfig?.baseUrl) setBaseUrl(result.detectedConfig.baseUrl);
-        setDetectedModel(result.detectedModel);
-        setDetectedConfig(result.detectedConfig);
+        if (result.detectedConfig?.baseUrl) setBaseUrl(result.detectedConfig.baseUrl);
         setStoreModels(effectiveServiceId, result.status.models);
         setStatus(result.status);
       } else {
@@ -236,6 +270,14 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
           </div>
         )}
 
+        {/* Base URL (all providers) */}
+        {!isCustom && (
+          <Field label="Base URL">
+            <input type="text" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="https://api.example.com/v1" className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm font-mono" />
+          </Field>
+        )}
+
         {/* API Key */}
         <Field label="API Key">
           <div className="relative">
@@ -263,11 +305,9 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
             {status.state === "saving" && <Loader2 size={12} className="animate-spin" />}
             保存
           </button>
-          {/* Status feedback */}
           {status.state === "connected" && (
             <span className="text-xs text-emerald-500">
               连接成功，{models.length} 个模型
-              {detectedModel ? `，已自动匹配 ${detectedModel}${detectedConfig ? ` / ${detectedConfig.apiFormat === "responses" ? "Responses" : "Chat"} / ${detectedConfig.stream ? "流式" : "非流式"}` : ""}` : ""}
             </span>
           )}
           {status.state === "error" && (
@@ -282,11 +322,12 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
           <Field label="协议类型">
             <select
               value={apiFormat}
-              onChange={(e) => setApiFormat(e.target.value as "chat" | "responses")}
+              onChange={(e) => setApiFormat(e.target.value as "chat" | "responses" | "anthropic")}
               className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm"
             >
               <option value="chat">Chat / Completions</option>
               <option value="responses">Responses</option>
+              <option value="anthropic">Anthropic Messages</option>
             </select>
           </Field>
 
@@ -303,24 +344,45 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
         </div>
 
         {/* Models */}
-        {isConnected && (
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground/70 font-medium uppercase tracking-wider">
-              可用模型（{models.length}）
-            </p>
-            {models.length > 0 ? (
-              <div className="flex gap-1.5 flex-wrap">
-                {models.map((m) => (
-                  <span key={m.id} className="text-[11px] px-2.5 py-1 rounded-md bg-emerald-500/[0.06] text-emerald-600 dark:text-emerald-400 border border-emerald-500/15">
-                    {m.name ?? m.id}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground/60">点击“测试连接”查看可用模型</p>
-            )}
-          </div>
-        )}
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground/70 font-medium uppercase tracking-wider">
+            模型（{allModels.length}）
+          </p>
+          {allModels.length > 0 ? (
+            <div className="max-h-64 overflow-y-auto rounded-lg border border-border/30 bg-secondary/10 p-2 space-y-1">
+              {allModels.map((m) => {
+                const id = m.id;
+                const name = m.name ?? m.id;
+                const maxOut = "maxOutput" in m && typeof m.maxOutput === "number" ? m.maxOutput : null;
+                const ctxWin = "contextWindow" in m && typeof m.contextWindow === "number" ? m.contextWindow : null;
+                const checked = selectedModels.has(id);
+                return (
+                  <label key={id} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-secondary/50 cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        setSelectedModels((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(id);
+                          else next.delete(id);
+                          return next;
+                        });
+                      }}
+                      className="accent-primary"
+                    />
+                    <span className="flex-1 font-mono text-xs text-foreground">{name}</span>
+                    <span className="text-[10px] text-muted-foreground/60 tabular-nums">
+                      {maxOut ? `${(maxOut / 1024).toFixed(0)}K out` : ""}{maxOut && ctxWin ? " · " : ""}{ctxWin ? `${(ctxWin / 1024).toFixed(0)}K ctx` : ""}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground/60">点击"测试连接"查看可用模型</p>
+          )}
+        </div>
 
         {/* Advanced params */}
         <details className="group pt-2 border-t border-border/20">

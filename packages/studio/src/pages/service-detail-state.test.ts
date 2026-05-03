@@ -28,7 +28,6 @@ describe("rehydrateServiceConnectionStatus", () => {
     expect(fetchJsonImpl).toHaveBeenCalledWith("/services/openai/secret");
     expect(result).toMatchObject({
       apiKey: "sk-live",
-      detectedModel: "",
       detectedConfig: null,
       status: { state: "idle" },
     });
@@ -78,11 +77,11 @@ describe("saveServiceConfig", () => {
       isCustom: false,
       resolvedCustomName: "",
       apiKey: "sk-live",
-      baseUrl: "",
+      baseUrl: "https://api.openai.com/v1",
       apiFormat: "chat",
       stream: true,
       temperature: "0.7",
-      detectedModel: "",
+      selectedModels: ["gpt-5.5"],
       fetchJsonImpl: fetchJsonImpl as never,
     });
 
@@ -92,18 +91,17 @@ describe("saveServiceConfig", () => {
       "/services/config",
     ]);
     expect(bodies).toEqual([
-      { apiKey: "sk-live", apiFormat: "chat", stream: true },
+      { apiKey: "sk-live", apiFormat: "chat", stream: true, baseUrl: "https://api.openai.com/v1" },
       { apiKey: "sk-live" },
       {
         service: "openai",
-        defaultModel: "gpt-5.5",
+        selectedModels: ["gpt-5.5"],
         services: [
-          { service: "openai", temperature: 0.7, apiFormat: "chat", stream: true },
+          { service: "openai", temperature: 0.7, apiFormat: "chat", stream: true, baseUrl: "https://api.openai.com/v1" },
         ],
       },
     ]);
     expect(result).toEqual({
-      detectedModel: "gpt-5.5",
       detectedConfig: { apiFormat: "chat", stream: true },
       status: { state: "connected", models: [{ id: "gpt-5.5" }] },
     });
@@ -118,6 +116,7 @@ describe("saveServiceConfig", () => {
           apiKey: "sk-bad",
           apiFormat: "chat",
           stream: true,
+          baseUrl: "https://api.openai.com/v1",
         });
         return { ok: false, error: "invalid key" };
       }
@@ -130,14 +129,12 @@ describe("saveServiceConfig", () => {
       isCustom: false,
       resolvedCustomName: "",
       apiKey: "sk-bad",
-      baseUrl: "",
+      baseUrl: "https://api.openai.com/v1",
       apiFormat: "chat",
       stream: true,
       temperature: "0.7",
-      detectedModel: "",
       fetchJsonImpl: fetchJsonImpl as never,
     })).resolves.toEqual({
-      detectedModel: "",
       detectedConfig: null,
       status: { state: "error", message: "invalid key" },
     });

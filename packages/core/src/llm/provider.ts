@@ -226,7 +226,9 @@ function resolvePiApi(
   presetApi: PiApi | undefined,
 ): PiApi {
   if (serviceName === "custom") {
-    return apiFormat === "responses" ? "openai-responses" : "openai-completions";
+    if (apiFormat === "anthropic") return "anthropic-messages";
+    if (apiFormat === "responses") return "openai-responses";
+    return "openai-completions";
   }
   return (presetApi ?? "openai-completions") as PiApi;
 }
