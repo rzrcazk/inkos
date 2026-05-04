@@ -313,6 +313,11 @@ function applyServiceEntry(llm: Record<string, unknown>, entry: ServiceConfigEnt
   llm.provider = deriveProviderFromService(entry.service);
   llm.baseUrl = entry.baseUrl ?? resolveServicePreset(entry.service)?.baseUrl ?? "";
 
+  // Clear stale top-level model — the correct model will be resolved from
+  // the service's endpoint definition (checkModel / selectedModels) rather
+  // than a model ID that belonged to a previously selected service.
+  delete llm.model;
+
   if (entry.temperature !== undefined) llm.temperature = entry.temperature;
   if (entry.apiFormat !== undefined) llm.apiFormat = entry.apiFormat;
   else if (transportDefaults?.apiFormat !== undefined) llm.apiFormat = transportDefaults.apiFormat;
