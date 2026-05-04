@@ -212,6 +212,7 @@ export class WriterAgent extends BaseAgent {
           chapterIntentData: input.chapterIntentData,
           contextPackage: input.contextPackage,
           ruleStack: input.ruleStack,
+          externalContext: input.externalContext,
           lengthSpec: resolvedLengthSpec,
           language: book.language ?? genreProfile.language,
           varianceBrief: englishVarianceBrief?.text,
@@ -814,6 +815,7 @@ ${lengthRequirementBlock}
     readonly chapterIntentData?: ChapterIntent;
     readonly contextPackage: ContextPackage;
     readonly ruleStack: RuleStack;
+    readonly externalContext?: string;
     readonly lengthSpec: LengthSpec;
     readonly language?: "zh" | "en";
     readonly varianceBrief?: string;
@@ -836,10 +838,13 @@ ${lengthRequirementBlock}
     const selectedEvidenceBlock = params.selectedEvidenceBlock
       ? `\n${sanitizeNarrativeEvidenceBlock(params.selectedEvidenceBlock, language)}\n`
       : "";
+    const chapterContextBlock = this.buildChapterContextBlock(params.externalContext, language);
     const briefNarrative = renderMemoAsNarrativeBlock(params.chapterMemo, params.chapterIntentData, language);
 
     if (params.language === "en") {
       return `Write chapter ${params.chapterNumber}.
+
+${chapterContextBlock}
 
 ${briefNarrative}
 
@@ -860,6 +865,8 @@ ${lengthRequirementBlock}
 
     return `请续写第${params.chapterNumber}章。
 
+${chapterContextBlock}
+
 ${briefNarrative}
 
 ## 已选上下文
@@ -875,6 +882,21 @@ ${varianceBlock}
 ${lengthRequirementBlock}
 - 先输出写作自检表，再写正文
 - 只需输出 PRE_WRITE_CHECK、CHAPTER_TITLE、CHAPTER_CONTENT 三个区块`;
+  }
+
+  private buildChapterContextBlock(externalContext: string | undefined, language: "zh" | "en"): string {
+    const trimmed = externalContext?.trim();
+    if (!trimmed) return "";
+    if (language === "en") {
+      return `## Per-chapter user instruction (highest priority)
+${trimmed}
+
+Obey this direct instruction for the current chapter. If it specifies a chapter title, use that title exactly in CHAPTER_TITLE. Keep continuity, but do not replace this instruction with the outline fallback.`;
+    }
+    return `## 本章用户指令（最高优先级）
+${trimmed}
+
+这是用户对当前章节的直接指令。若其中指定章节标题，CHAPTER_TITLE 必须原样使用该标题。保持连续性，但不要用卷纲兜底替换这条指令。`;
   }
 
   private joinGovernedEvidenceBlocks(blocks: ReturnType<typeof buildGovernedMemoryEvidenceBlocks> | undefined): string | undefined {

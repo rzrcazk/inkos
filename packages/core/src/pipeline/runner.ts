@@ -1471,7 +1471,7 @@ export class PipelineRunner {
   async writeNextChapter(bookId: string, wordCount?: number, temperatureOverride?: number): Promise<ChapterPipelineResult> {
     const releaseLock = await this.state.acquireBookLock(bookId);
     try {
-      return await this._writeNextChapterLocked(bookId, wordCount, temperatureOverride);
+      return await this._writeNextChapterLocked(bookId, wordCount, temperatureOverride, this.config.externalContext);
     } finally {
       await releaseLock();
     }
@@ -1495,7 +1495,12 @@ export class PipelineRunner {
     }
   }
 
-  private async _writeNextChapterLocked(bookId: string, wordCount?: number, temperatureOverride?: number): Promise<ChapterPipelineResult> {
+  private async _writeNextChapterLocked(
+    bookId: string,
+    wordCount?: number,
+    temperatureOverride?: number,
+    externalContext?: string,
+  ): Promise<ChapterPipelineResult> {
     await this.state.ensureControlDocuments(bookId);
     const book = await this.state.loadBookConfig(bookId);
     const bookDir = this.state.bookDir(bookId);
@@ -1507,7 +1512,7 @@ export class PipelineRunner {
       book,
       bookDir,
       chapterNumber,
-      this.config.externalContext,
+      externalContext,
     );
     const reducedControlInput = writeInput.chapterIntent && writeInput.contextPackage && writeInput.ruleStack
       ? {
@@ -2737,6 +2742,7 @@ ${matrix}`,
     );
 
     return {
+      externalContext,
       chapterIntent: plan.intentMarkdown,
       chapterMemo: plan.memo,
       chapterIntentData: plan.intent,

@@ -143,6 +143,33 @@ describe("resolveServiceModel", () => {
     ).rejects.toThrow(/API key/i);
   });
 
+  it("resolves Ollama local models without an API key", async () => {
+    const result = await resolveServiceModel(
+      "ollama",
+      "Qwen3.6-35B-A3B-APEX-I-Mini.gguf",
+      root,
+    );
+
+    expect(result.apiKey).toBe("");
+    expect(result.model.id).toBe("Qwen3.6-35B-A3B-APEX-I-Mini.gguf");
+    expect(result.model.provider).toBe("ollama");
+    expect(result.model.baseUrl).toBe("http://localhost:11434/v1");
+  });
+
+  it("resolves local custom OpenAI-compatible services without an API key", async () => {
+    const result = await resolveServiceModel(
+      "custom:LocalProxy",
+      "gpt-5.5",
+      root,
+      "http://127.0.0.1:4567/v1",
+    );
+
+    expect(result.apiKey).toBe("");
+    expect(result.model.id).toBe("gpt-5.5");
+    expect(result.model.api).toBe("openai-completions");
+    expect(result.model.baseUrl).toBe("http://127.0.0.1:4567/v1");
+  });
+
   it("resolves custom service with baseUrl", async () => {
     await mkdir(join(root, ".inkos"), { recursive: true });
     await writeFile(

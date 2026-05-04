@@ -797,13 +797,14 @@ describe("PipelineRunner", () => {
     );
 
     try {
-      await runner.writeDraft(bookId, "Ignore the guild chase and bring focus back to mentor conflict.");
+      const chapterContext = "Ignore the guild chase and bring focus back to mentor conflict.";
+      await runner.writeDraft(bookId, chapterContext);
 
       expect(planChapter).toHaveBeenCalledTimes(1);
       expect(composeChapter).toHaveBeenCalledTimes(1);
 
       const writeInput = writeChapter.mock.calls[0]?.[0];
-      expect(writeInput?.externalContext).toBeUndefined();
+      expect(writeInput?.externalContext).toBe(chapterContext);
       expect(writeInput?.chapterIntent).toContain("# Chapter Intent");
       expect(writeInput?.chapterMemo).toEqual(expect.objectContaining({
         chapter: 1,
@@ -1435,10 +1436,56 @@ describe("PipelineRunner", () => {
       expect(composeChapter).toHaveBeenCalledTimes(1);
       const writeInput = writeChapter.mock.calls[0]?.[0];
       expect(writeInput?.chapterIntent).toContain("# Chapter Intent");
+      expect(writeInput?.externalContext).toBeUndefined();
       expect(writeInput?.chapterMemo).toEqual(expect.objectContaining({
         chapter: 1,
       }));
       expect(writeInput?.contextPackage?.selectedContext.length).toBeGreaterThan(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("passes configured writeNextChapter context through planner and governed writer input", async () => {
+    const chapterContext = "本章标题：雨夜账本\n必须围绕账本失窃后的当面对质展开。";
+    const { root, runner, state, bookId } = await createRunnerFixture({
+      inputGovernanceMode: "v2",
+      externalContext: chapterContext,
+    });
+
+    await Promise.all([
+      writeFile(join(state.bookDir(bookId), "story", "current_focus.md"), "# Current Focus\n\nBring focus back to the mentor conflict.\n", "utf-8"),
+      writeFile(join(state.bookDir(bookId), "story", "volume_outline.md"), "# Volume Outline\n\n## Chapter 1\nTrack the merchant guild trail.\n", "utf-8"),
+      writeFile(join(state.bookDir(bookId), "story", "current_state.md"), "# Current State\n\n- Lin Yue still hides the broken oath token.\n", "utf-8"),
+      writeFile(join(state.bookDir(bookId), "story", "story_bible.md"), "# Story Bible\n\n- The jade seal cannot be destroyed.\n", "utf-8"),
+      writeFile(join(state.bookDir(bookId), "story", "pending_hooks.md"), "# Pending Hooks\n\n- Why the mentor vanished after the trial.\n", "utf-8"),
+    ]);
+
+    const planChapter = vi.spyOn(PlannerAgent.prototype, "planChapter");
+    vi.spyOn(ComposerModule, "composeGovernedChapter");
+    const writeChapter = vi.spyOn(WriterAgent.prototype, "writeChapter").mockResolvedValue(
+      createWriterOutput({
+        chapterNumber: 1,
+        title: "雨夜账本",
+        content: "Governed pipeline draft.",
+        wordCount: "Governed pipeline draft.".length,
+      }),
+    );
+    vi.spyOn(ContinuityAuditor.prototype, "auditChapter").mockResolvedValue(
+      createAuditResult({
+        passed: true,
+        issues: [],
+        summary: "clean",
+      }),
+    );
+
+    try {
+      await runner.writeNextChapter(bookId, 220);
+
+      expect(planChapter.mock.calls[0]?.[0].externalContext).toBe(chapterContext);
+      const writeInput = writeChapter.mock.calls[0]?.[0];
+      expect(writeInput?.externalContext).toBe(chapterContext);
+      expect(writeInput?.chapterMemo?.goal).toBe(chapterContext);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

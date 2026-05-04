@@ -161,6 +161,27 @@ describe("PlannerAgent.planChapter memo generation", () => {
     expect(options).not.toHaveProperty("maxTokens");
   });
 
+  it("passes per-chapter user context into the memo prompt as a high-priority instruction", async () => {
+    const chatSpy = vi.spyOn(llmProvider, "chatCompletion").mockResolvedValue({
+      content: validMemoRaw(1),
+      usage: ZERO_USAGE,
+    } as unknown as Awaited<ReturnType<typeof llmProvider.chatCompletion>>);
+
+    await makePlanner().planChapter({
+      book: makeBook(),
+      bookDir,
+      chapterNumber: 1,
+      externalContext: "本章标题：雨夜账本\n必须围绕账本失窃后的当面对质展开。",
+    });
+
+    const callArgs = chatSpy.mock.calls[0]!;
+    const messages = callArgs[2] as ReadonlyArray<{ role: string; content: string }>;
+    const userMsg = messages.find((m) => m.role === "user");
+    expect(userMsg?.content).toContain("本章用户指令");
+    expect(userMsg?.content).toContain("本章标题：雨夜账本");
+    expect(userMsg?.content).toContain("当面对质");
+  });
+
   it("retries when the first response is malformed and succeeds on retry", async () => {
     const chatSpy = vi.spyOn(llmProvider, "chatCompletion")
       .mockResolvedValueOnce({

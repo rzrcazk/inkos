@@ -139,6 +139,7 @@ export class PlannerAgent extends BaseAgent {
       chapterSummariesRaw: seedMaterials.chapterSummariesRaw,
       previousEndingExcerpt: seedMaterials.previousEndingExcerpt,
       brief: seedMaterials.brief,
+      chapterContext: input.externalContext,
       recyclableHooks: memorySelection.recyclableHooks,
       // Phase hotfix 4: thread book language through so the planner uses
       // English prompts (system + user template + golden opening guidance)
@@ -185,6 +186,7 @@ export class PlannerAgent extends BaseAgent {
     readonly chapterSummariesRaw: string;
     readonly previousEndingExcerpt?: string;
     readonly brief?: string;
+    readonly chapterContext?: string;
     readonly recyclableHooks?: ReadonlyArray<StoredHook>;
     readonly language?: "zh" | "en";
   }): Promise<ChapterMemo> {
@@ -229,6 +231,7 @@ export class PlannerAgent extends BaseAgent {
       isGoldenOpening: input.isGoldenOpening,
       bookRulesRelevant: bookRulesRaw.trim().length > 0 ? bookRulesRaw.trim() : noBookRules,
       brief: input.brief ?? "",
+      chapterContext: input.chapterContext ?? "",
       language,
     });
 

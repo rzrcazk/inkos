@@ -4,6 +4,7 @@ import { resolveServicePiProvider, resolveServicePreset } from "./service-preset
 import { getServiceApiKey } from "./secrets.js";
 import { getEndpoint } from "./providers/index.js";
 import type { InkosEndpoint } from "./providers/types.js";
+import { isApiKeyOptionalForEndpoint } from "../utils/llm-endpoint-auth.js";
 
 export interface ResolvedModel {
   model: Model<Api>;
@@ -31,19 +32,11 @@ export async function resolveServiceModel(
   customBaseUrl?: string,
   customApiFormat?: "chat" | "responses",
 ): Promise<ResolvedModel> {
-  // Resolve API key
-  const apiKey = await getServiceApiKey(projectRoot, service);
-  if (!apiKey) {
-    throw new Error(
-      `API key not found for service "${service}". Add it in .inkos/secrets.json or set the environment variable.`,
-    );
-  }
-
   // Determine pi-ai provider
   const baseService = service.startsWith("custom:") ? "custom" : service;
   const preset = resolveServicePreset(baseService);
   const endpoint = getEndpoint(baseService);
-  const piProvider = resolveServicePiProvider(baseService) ?? "openai";
+  const piProvider = baseService === "ollama" ? "ollama" : resolveServicePiProvider(baseService) ?? "openai";
   const apiType = service.startsWith("custom:")
     ? (customApiFormat === "responses" ? "openai-responses" : "openai-completions")
     : (preset?.api ?? "openai-completions");
@@ -59,6 +52,15 @@ export async function resolveServiceModel(
   if (!effectiveBaseUrl) {
     throw new Error(
       `Cannot resolve model "${modelId}" for service "${service}": no baseUrl available.`,
+    );
+  }
+
+  // Resolve API key after baseUrl/provider are known so local/self-hosted endpoints
+  // such as Ollama can be used without forcing a fake secret.
+  const apiKey = await getServiceApiKey(projectRoot, service);
+  if (!apiKey && !isApiKeyOptionalForEndpoint({ provider: preset?.providerFamily, baseUrl: effectiveBaseUrl })) {
+    throw new Error(
+      `API key not found for service "${service}". Add it in .inkos/secrets.json or set the environment variable.`,
     );
   }
 
@@ -78,7 +80,7 @@ export async function resolveServiceModel(
 
   return {
     model,
-    apiKey,
+    apiKey: apiKey ?? "",
     writingTemperature: preset?.writingTemperature,
     temperatureRange: preset?.temperatureRange,
     temperatureHint: preset?.temperatureHint,

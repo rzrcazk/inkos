@@ -47,6 +47,7 @@ const SERVICE_PRESETS_MOCK: Record<string, ServicePresetMock> = {
   minimax: { providerFamily: "anthropic", baseUrl: "https://api.minimaxi.com/anthropic", modelsBaseUrl: "https://api.minimaxi.com/anthropic", knownModels: [] as string[] },
   bailian: { providerFamily: "anthropic", baseUrl: "https://dashscope.aliyuncs.com/apps/anthropic", modelsBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", knownModels: [] as string[] },
   google: { providerFamily: "openai", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", modelsBaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", knownModels: [] as string[] },
+  ollama: { providerFamily: "openai", baseUrl: "http://localhost:11434/v1", modelsBaseUrl: "http://localhost:11434/v1", knownModels: [] as string[] },
   custom: { providerFamily: "openai", baseUrl: "", knownModels: [] as string[] },
 };
 const resolveServicePresetMock = vi.fn((service: string) => SERVICE_PRESETS_MOCK[service]);
@@ -62,9 +63,10 @@ const listModelsForServiceMock = vi.fn(async (service: string, apiKey?: string, 
     return preset.knownModels.map((id) => ({ id, name: id, reasoning: false, contextWindow: 0 }));
   }
   const modelsBaseUrl = liveBaseUrl ?? resolveServiceModelsBaseUrlMock(service);
-  if (!apiKey || !modelsBaseUrl) return [];
+  const allowsNoKey = Boolean(modelsBaseUrl?.startsWith("http://localhost") || modelsBaseUrl?.startsWith("http://127.0.0.1"));
+  if ((!apiKey && !allowsNoKey) || !modelsBaseUrl) return [];
   const res = await fetch(`${modelsBaseUrl.replace(/\/$/, "")}/models`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) return [];
@@ -97,6 +99,7 @@ const endpointMocks = [
     group,
     ...(id === "google" ? { checkModel: "gemini-2.5-flash" } : {}),
     ...(id === "minimax" ? { checkModel: "MiniMax-M2.7" } : {}),
+    ...(id === "ollama" ? { checkModel: "llama3.2:3b" } : {}),
     models: [
       { id: `${id}-model`, maxOutput: 4096, contextWindowTokens: 32768, enabled: true },
       { id: `${id}-disabled`, maxOutput: 4096, contextWindowTokens: 32768, enabled: false },
@@ -224,6 +227,7 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
     resolveServiceProviderFamily: resolveServiceProviderFamilyMock,
     resolveServiceModelsBaseUrl: resolveServiceModelsBaseUrlMock,
     resolveServiceModel: resolveServiceModelMock,
+    isApiKeyOptionalForEndpoint: actual.isApiKeyOptionalForEndpoint,
     loadSecrets: loadSecretsMock,
     saveSecrets: saveSecretsMock,
     getServiceApiKey: getServiceApiKeyMock,
@@ -837,6 +841,29 @@ describe("createStudioServer daemon lifecycle", () => {
     });
   });
 
+  it("returns Ollama live models without a saved API key", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ id: "qwen3.6:35b-a3b" }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock as typeof fetch);
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/services/ollama/models?refresh=1");
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      models: [
+        { id: "qwen3.6:35b-a3b", name: "qwen3.6:35b-a3b" },
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:11434/v1/models",
+      expect.objectContaining({ headers: {} }),
+    );
+  });
+
   it("merges service config patches instead of overwriting existing services", async () => {
     await writeFile(join(root, "inkos.json"), JSON.stringify({
       ...projectConfig,
@@ -1277,6 +1304,55 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(chatCompletionMock.mock.calls.map((call) => call[1])).not.toContain("MiniMax-M2.7");
   });
 
+  it("uses discovered Ollama models without requiring an API key or the built-in check model", async () => {
+    await writeFile(join(root, "inkos.json"), JSON.stringify({
+      ...projectConfig,
+      llm: {
+        services: [
+          { service: "ollama", apiFormat: "chat", stream: true },
+        ],
+        defaultModel: "llama3.2:3b",
+      },
+    }, null, 2), "utf-8");
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ id: "qwen3.6:35b-a3b" }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock as typeof fetch);
+    createLLMClientMock.mockImplementation(((cfg: unknown) => cfg) as any);
+    chatCompletionMock.mockImplementation(async (_client: any, model: string) => {
+      if (model === "qwen3.6:35b-a3b") {
+        return {
+          content: "pong",
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      }
+      throw new Error(`unexpected model: ${model}`);
+    });
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/services/ollama/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        apiKey: "",
+        apiFormat: "chat",
+        stream: true,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      selectedModel: "qwen3.6:35b-a3b",
+      models: [{ id: "qwen3.6:35b-a3b", name: "qwen3.6:35b-a3b" }],
+    });
+    expect(chatCompletionMock.mock.calls.map((call) => call[1])).not.toContain("llama3.2:3b");
+  });
+
   it("does not fall back to the global default model when a bank endpoint probe fails", async () => {
     await writeFile(join(root, "inkos.json"), JSON.stringify({
       ...projectConfig,
@@ -1640,6 +1716,49 @@ describe("createStudioServer daemon lifecycle", () => {
         targetChapters: 88,
       },
     }));
+  });
+
+  it("creates books with Studio Ollama config without requiring an API key", async () => {
+    await writeFile(join(root, "inkos.json"), JSON.stringify({
+      ...projectConfig,
+      llm: {
+        configSource: "studio",
+        service: "ollama",
+        provider: "openai",
+        baseUrl: "http://localhost:11434/v1",
+        model: "Qwen3.6-35B-A3B-APEX-I-Mini.gguf",
+        apiKey: "",
+        services: [{ service: "ollama", apiFormat: "chat", stream: false }],
+        defaultModel: "Qwen3.6-35B-A3B-APEX-I-Mini.gguf",
+        apiFormat: "chat",
+        stream: false,
+      },
+    }, null, 2), "utf-8");
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/books/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Local Book",
+        genre: "urban",
+        platform: "qidian",
+        language: "zh",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(loadProjectConfigMock).toHaveBeenCalledWith(root, { consumer: "studio" });
+    expect(createLLMClientMock).toHaveBeenCalledWith(expect.objectContaining({
+      service: "ollama",
+      model: "Qwen3.6-35B-A3B-APEX-I-Mini.gguf",
+      apiKey: "",
+    }));
+    expect(pipelineConfigs.at(-1)).toMatchObject({
+      model: "Qwen3.6-35B-A3B-APEX-I-Mini.gguf",
+    });
   });
 
   it("passes one-off brief into revise requests through pipeline config", async () => {
@@ -2095,6 +2214,97 @@ describe("createStudioServer daemon lifecycle", () => {
     await expect(response.json()).resolves.toMatchObject({
       response: "你好，我在。",
     });
+  });
+
+  it("lets the Studio agent creation path use explicit Ollama models without an API key", async () => {
+    const ollamaModel = {
+      id: "Qwen3.6-35B-A3B-APEX-I-Mini.gguf",
+      name: "Qwen3.6-35B-A3B-APEX-I-Mini.gguf",
+      api: "openai-completions",
+      provider: "ollama",
+      baseUrl: "http://localhost:11434/v1",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 0,
+      maxTokens: 16384,
+    };
+    await writeFile(join(root, "inkos.json"), JSON.stringify({
+      ...projectConfig,
+      llm: {
+        configSource: "studio",
+        service: "ollama",
+        provider: "openai",
+        baseUrl: "http://localhost:11434/v1",
+        model: "Qwen3.6-35B-A3B-APEX-I-Mini.gguf",
+        apiKey: "",
+        services: [
+          { service: "ollama", apiFormat: "chat", stream: false },
+        ],
+        defaultModel: "Qwen3.6-35B-A3B-APEX-I-Mini.gguf",
+        apiFormat: "chat",
+        stream: false,
+      },
+    }, null, 2), "utf-8");
+    loadBookSessionMock.mockResolvedValueOnce({
+      sessionId: "agent-session-1",
+      bookId: null,
+      title: null,
+      messages: [],
+      events: [],
+      draftRounds: [],
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    createLLMClientMock.mockImplementation(((cfg: any) => ({
+      _piModel: {
+        ...ollamaModel,
+        id: cfg.model,
+        name: cfg.model,
+        provider: cfg.service === "ollama" ? "ollama" : "openai",
+        baseUrl: cfg.baseUrl || "http://localhost:11434/v1",
+      },
+      _apiKey: cfg.apiKey ?? "",
+    })) as any);
+    resolveServiceModelMock.mockResolvedValue({
+      model: ollamaModel,
+      apiKey: "",
+    });
+    runAgentSessionMock.mockResolvedValueOnce({
+      responseText: "收到。",
+      messages: [
+        { role: "user", content: "/create" },
+        { role: "assistant", content: "收到。" },
+      ],
+    });
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "/create",
+        service: "ollama",
+        model: "Qwen3.6-35B-A3B-APEX-I-Mini.gguf",
+        sessionId: "agent-session-1",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(createLLMClientMock).toHaveBeenCalledWith(expect.objectContaining({
+      service: "ollama",
+      model: "Qwen3.6-35B-A3B-APEX-I-Mini.gguf",
+      apiKey: "",
+    }));
+    expect(pipelineConfigs.at(-1)).toMatchObject({
+      client: expect.objectContaining({ _apiKey: "" }),
+      model: "Qwen3.6-35B-A3B-APEX-I-Mini.gguf",
+    });
+    const agentConfig = runAgentSessionMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(agentConfig.model).toBe(ollamaModel);
+    expect(agentConfig.apiKey).toBe("");
   });
 
   it("rejects explicit non-text models before running the agent", async () => {

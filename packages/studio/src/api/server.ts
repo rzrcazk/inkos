@@ -30,6 +30,7 @@ import {
   loadSecrets,
   saveSecrets,
   listModelsForService,
+  isApiKeyOptionalForEndpoint,
   getAllEndpoints,
   probeModelsFromUpstream,
   fetchWithProxy,
@@ -668,7 +669,8 @@ async function probeServiceCapabilities(args: {
     endpoint?.checkModel
     ?? preset?.knownModels?.[0]
     ?? endpoint?.models.find((model) => model.enabled !== false)?.id;
-  const useEndpointCheckModel = !isCustomServiceId(args.service) && Boolean(endpoint?.checkModel);
+  const useDynamicLocalModels = baseService === "ollama";
+  const useEndpointCheckModel = !useDynamicLocalModels && !isCustomServiceId(args.service) && Boolean(endpoint?.checkModel);
   const configService = typeof llm.service === "string" ? llm.service : undefined;
   const configModel = !useEndpointCheckModel && configService === args.service
     ? typeof llm.defaultModel === "string"
@@ -679,7 +681,7 @@ async function probeServiceCapabilities(args: {
     : undefined;
   const useCustomFallbacks = isCustomServiceId(args.service);
   const modelCandidates = buildModelCandidates({
-    preferredModel: args.preferredModel ?? serviceFirstModel,
+    preferredModel: args.preferredModel ?? (useDynamicLocalModels ? discoveredModels[0]?.id ?? serviceFirstModel : serviceFirstModel),
     configModel,
     envModel: useCustomFallbacks ? envModel : undefined,
     discoveredModels: useEndpointCheckModel ? [] : discoveredModels,
@@ -1317,13 +1319,18 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       stream?: boolean;
     }>();
 
-    if (!apiKey?.trim()) {
-      return c.json({ ok: false, error: "API Key 不能为空" }, 400);
-    }
-
     const resolvedBaseUrl = await resolveConfiguredServiceBaseUrl(root, service, baseUrl);
     if (!resolvedBaseUrl) {
       return c.json({ ok: false, error: `未知服务商: ${service}` }, 400);
+    }
+
+    const baseService = isCustomServiceId(service) ? "custom" : service;
+    const apiKeyOptional = isApiKeyOptionalForEndpoint({
+      provider: resolveServiceProviderFamily(baseService) ?? "openai",
+      baseUrl: resolvedBaseUrl,
+    });
+    if (!apiKey?.trim() && !apiKeyOptional) {
+      return c.json({ ok: false, error: "API Key 不能为空" }, 400);
     }
 
     const rawConfig = await loadRawConfig(root).catch(() => ({} as Record<string, unknown>));
@@ -1331,7 +1338,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const probe = await probeServiceCapabilities({
       root,
       service,
-      apiKey: apiKey.trim(),
+      apiKey: apiKey?.trim() ?? "",
       baseUrl: resolvedBaseUrl,
       preferredApiFormat: apiFormat,
       preferredStream: stream,
@@ -1449,10 +1456,15 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const secrets = await loadSecrets(root);
     const apiKey = c.req.query("apiKey") || secrets.services[service]?.apiKey || "";
 
-    // No key = no models
-    if (!apiKey) return c.json({ models: [] });
-
     const resolvedBaseUrl = await resolveConfiguredServiceBaseUrl(root, service);
+    const baseService = isCustomServiceId(service) ? "custom" : service;
+    const apiKeyOptional = isApiKeyOptionalForEndpoint({
+      provider: resolveServiceProviderFamily(baseService) ?? "openai",
+      baseUrl: resolvedBaseUrl,
+    });
+
+    // No key = no models, except local/self-hosted endpoints such as Ollama.
+    if (!apiKey && !apiKeyOptional) return c.json({ models: [] });
 
     // Cache by service + resolved baseUrl + apiKey fingerprint; valid for 10 min unless ?refresh=1
     const cacheKey = `${service}::${resolvedBaseUrl ?? ""}::${apiKey.slice(-8)}`;
@@ -1878,12 +1890,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       // Create pipeline with resolved model (so sub_agent tools use the frontend-selected model)
       // Don't spread config.llm — its baseUrl/provider belong to the old service.
       // Let createLLMClient resolve baseUrl from the service preset.
-      const pipelineClient = (reqService && reqModel && resolvedApiKey)
+      const pipelineClient = (reqService && reqModel && resolvedModel)
         ? createLLMClient({
             ...config.llm,
             service: configuredEntry?.service ?? reqService,
             model: reqModel,
-            apiKey: resolvedApiKey,
+            apiKey: resolvedApiKey ?? "",
             ...(configuredEntry?.apiFormat ? { apiFormat: configuredEntry.apiFormat } : {}),
             ...(configuredEntry?.stream !== undefined ? { stream: configuredEntry.stream } : {}),
             baseUrl: configuredEntry?.baseUrl ?? "",

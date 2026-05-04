@@ -458,9 +458,14 @@ function assertModelBelongsToService(entry: ServiceConfigEntry | undefined, mode
 }
 
 function modelBelongsToService(service: string, model: string): boolean {
+  if (serviceAllowsUnlistedModels(service)) return true;
   const endpoint = getEndpoint(service);
   if (!endpoint) return true;
   return endpoint.models.some((knownModel) => knownModel.id.toLowerCase() === model.toLowerCase());
+}
+
+function serviceAllowsUnlistedModels(service: string): boolean {
+  return service === "ollama";
 }
 
 function serviceEntryKey(entry: ServiceConfigEntry): string {

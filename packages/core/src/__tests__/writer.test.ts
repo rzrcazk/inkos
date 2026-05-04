@@ -37,6 +37,70 @@ describe("WriterAgent", () => {
     vi.restoreAllMocks();
   });
 
+  it("renders per-chapter user context in governed creative prompts", () => {
+    const agent = new WriterAgent({
+      client: {
+        provider: "openai",
+        apiFormat: "chat",
+        stream: false,
+        defaults: {
+          temperature: 0.7,
+          maxTokens: 4096,
+          thinkingBudget: 0,
+          extra: {},
+        },
+      },
+      model: "test-model",
+      projectRoot: "/tmp/inkos-writer-context-test",
+    });
+
+    const prompt = (agent as unknown as {
+      buildGovernedUserPrompt(params: {
+        readonly chapterNumber: number;
+        readonly chapterMemo: {
+          readonly chapter: number;
+          readonly goal: string;
+          readonly isGoldenOpening: boolean;
+          readonly body: string;
+          readonly threadRefs: readonly string[];
+        };
+        readonly contextPackage: { readonly chapter: number; readonly selectedContext: readonly [] };
+        readonly ruleStack: {
+          readonly layers: readonly [];
+          readonly sections: { readonly hard: readonly string[]; readonly soft: readonly string[]; readonly diagnostic: readonly string[] };
+          readonly overrideEdges: readonly [];
+          readonly activeOverrides: readonly [];
+        };
+        readonly lengthSpec: ReturnType<typeof buildLengthSpec>;
+        readonly language?: "zh" | "en";
+        readonly externalContext?: string;
+      }): string;
+    }).buildGovernedUserPrompt({
+      chapterNumber: 7,
+      chapterMemo: {
+        chapter: 7,
+        goal: "推进账本线",
+        isGoldenOpening: false,
+        body: "## 当前任务\n围绕账本线推进。",
+        threadRefs: [],
+      },
+      contextPackage: { chapter: 7, selectedContext: [] },
+      ruleStack: {
+        layers: [],
+        sections: { hard: [], soft: [], diagnostic: [] },
+        overrideEdges: [],
+        activeOverrides: [],
+      },
+      lengthSpec: buildLengthSpec(1200, "zh"),
+      language: "zh",
+      externalContext: "本章标题：雨夜账本\n必须围绕账本失窃后的当面对质展开。",
+    });
+
+    expect(prompt).toContain("本章用户指令");
+    expect(prompt).toContain("本章标题：雨夜账本");
+    expect(prompt).toContain("当面对质");
+  });
+
   it("uses compact summary context plus selected long-range evidence during governed settlement", async () => {
     const root = await mkdtemp(join(tmpdir(), "inkos-writer-test-"));
     const bookDir = join(root, "book");

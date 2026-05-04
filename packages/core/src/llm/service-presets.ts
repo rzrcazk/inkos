@@ -1,5 +1,6 @@
 import { getEndpoint } from "./providers/index.js";
 import { probeModelsFromUpstream } from "./providers/probe.js";
+import { isApiKeyOptionalForEndpoint } from "../utils/llm-endpoint-auth.js";
 
 export interface ServicePreset {
   readonly providerFamily: "openai" | "anthropic";
@@ -168,8 +169,10 @@ export async function listModelsForService(
 
   // 1) 先试 live /models probe
   const probeBaseUrl = liveBaseUrl || provider?.modelsBaseUrl || provider?.baseUrl || resolveServiceModelsBaseUrl(service);
-  if (apiKey && probeBaseUrl) {
-    const probed = await probeModelsFromUpstream(probeBaseUrl, apiKey, 10_000);
+  const providerFamily = preset?.providerFamily ?? (provider?.api.startsWith("anthropic") ? "anthropic" : "openai");
+  const canProbeWithoutApiKey = isApiKeyOptionalForEndpoint({ provider: providerFamily, baseUrl: probeBaseUrl });
+  if ((apiKey || canProbeWithoutApiKey) && probeBaseUrl) {
+    const probed = await probeModelsFromUpstream(probeBaseUrl, apiKey ?? "", 10_000);
     if (probed.length > 0) {
       const { lookupModel } = await import("./providers/lookup.js");
       for (const m of probed) {

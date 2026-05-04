@@ -18,6 +18,7 @@ import { resolveServicePreset } from "./service-presets.js";
 import { getEndpoint } from "./providers/index.js";
 import { lookupModel } from "./providers/lookup.js";
 import { fetchWithProxy } from "../utils/proxy-fetch.js";
+import { isApiKeyOptionalForEndpoint } from "../utils/llm-endpoint-auth.js";
 
 
 // === Streaming Monitor Types ===
@@ -183,6 +184,7 @@ export function createLLMClient(config: LLMConfig): LLMClient {
   else if (inkosProvider?.id === "zhipu") piProvider = "zai";
   else if (inkosProvider?.id === "openrouter") piProvider = "openrouter";
   else if (inkosProvider?.id === "githubCopilot") piProvider = "githubCopilot";
+  else if (inkosProvider?.id === "ollama") piProvider = "ollama";
   else if (inkosProvider?.api === "anthropic-messages") piProvider = "anthropic";
   else piProvider = provider;
 
@@ -466,9 +468,26 @@ async function withTransientLLMRetry<T>(
 }
 
 function shouldUseNativeCustomTransport(client: LLMClient): boolean {
-  return client.configSource === "studio"
-    && client.service === "custom"
-    && (client.provider === "openai" || client.provider === "anthropic");
+  if (client.service === "custom") {
+    if (
+      client.configSource === "studio"
+      && (client.provider === "openai" || client.provider === "anthropic")
+    ) {
+      return true;
+    }
+    return client.provider === "openai" && shouldUseNativeLocalOpenAICompatibleTransport(client);
+  }
+  return client.service === "ollama"
+    && client.provider === "openai"
+    && shouldUseNativeLocalOpenAICompatibleTransport(client);
+}
+
+function shouldUseNativeLocalOpenAICompatibleTransport(client: LLMClient): boolean {
+  return !client._apiKey
+    && isApiKeyOptionalForEndpoint({
+      provider: client.provider,
+      baseUrl: client._piModel?.baseUrl,
+    });
 }
 
 function buildCustomHeaders(client: LLMClient): Record<string, string> {
@@ -645,7 +664,6 @@ async function chatCompletionViaCustomAnthropicCompatible(
 ): Promise<LLMResponse> {
   const baseUrl = client._piModel?.baseUrl ?? "";
   const errorCtx = { baseUrl, model };
-  const monitor = createStreamMonitor(onStreamProgress);
   const extra = stripReservedKeys(resolved.extra);
   const payload: Record<string, unknown> = {
     model,
@@ -697,6 +715,7 @@ async function chatCompletionViaCustomAnthropicCompatible(
   let buffer = "";
   let content = "";
   let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  const monitor = createStreamMonitor(onStreamProgress);
 
   try {
     while (true) {
@@ -752,7 +771,6 @@ async function chatCompletionViaCustomOpenAICompatible(
   const baseUrl = client._piModel?.baseUrl ?? "";
   const headers = buildCustomHeaders(client);
   const errorCtx = { baseUrl, model };
-  const monitor = createStreamMonitor(onStreamProgress);
   const extra = stripReservedKeys(resolved.extra);
 
   if (client.apiFormat === "responses") {
@@ -799,6 +817,7 @@ async function chatCompletionViaCustomOpenAICompatible(
     let buffer = "";
     let content = "";
     let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    const monitor = createStreamMonitor(onStreamProgress);
 
     try {
       while (true) {
@@ -898,6 +917,7 @@ async function chatCompletionViaCustomOpenAICompatible(
   let content = "";
   let reasoningContent = "";
   let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  const monitor = createStreamMonitor(onStreamProgress);
 
   try {
     while (true) {

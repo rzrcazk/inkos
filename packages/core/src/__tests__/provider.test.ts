@@ -300,6 +300,37 @@ describe("chatCompletion via pi-ai", () => {
     vi.unstubAllGlobals();
   });
 
+  it("does not leave a stream monitor timer after native non-stream chat", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: "你好！" } }],
+        usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = makeClient(0.7, {
+      service: "custom",
+      stream: false,
+      _piModel: {
+        ...MOCK_PI_MODEL,
+        provider: "openai",
+        baseUrl: "https://gateway.example/v1",
+      },
+    });
+    const result = await chatCompletion(client, "gpt-5.4", [{ role: "user", content: "nihao" }], {
+      onStreamProgress: vi.fn(),
+    });
+
+    expect(result.content).toBe("你好！");
+    expect(vi.getTimerCount()).toBe(0);
+
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
   it("attaches a proxy dispatcher for custom openai-compatible chat when proxyUrl is configured", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -464,6 +495,68 @@ describe("chatCompletion via pi-ai", () => {
     expect(result.content).toBe("legacy ok");
     expect(mockCompleteSimple).toHaveBeenCalledOnce();
     expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("uses native fetch transport for local Ollama without an API key", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: "本地 Ollama 可用" } }],
+        usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = makeClient(0.7, {
+      service: "ollama",
+      configSource: "env",
+      stream: false,
+      _apiKey: "",
+      _piModel: {
+        ...MOCK_PI_MODEL,
+        provider: "ollama",
+        baseUrl: "http://127.0.0.1:11434/v1",
+      },
+    });
+    const result = await chatCompletion(client, "Qwen3.6-35B-A3B-APEX-I-Mini.gguf", [
+      { role: "user", content: "ping" },
+    ]);
+
+    expect(result.content).toBe("本地 Ollama 可用");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(mockCompleteSimple).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("uses native fetch transport for local custom OpenAI-compatible endpoints without an API key", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: "本地自定义端点可用" } }],
+        usage: { prompt_tokens: 5, completion_tokens: 6, total_tokens: 11 },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = makeClient(0.7, {
+      service: "custom",
+      configSource: "env",
+      stream: false,
+      _apiKey: "",
+      _piModel: {
+        ...MOCK_PI_MODEL,
+        provider: "openai",
+        baseUrl: "http://127.0.0.1:11434/v1",
+      },
+    });
+    const result = await chatCompletion(client, "local-qwen", [{ role: "user", content: "ping" }]);
+
+    expect(result.content).toBe("本地自定义端点可用");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(mockCompleteSimple).not.toHaveBeenCalled();
 
     vi.unstubAllGlobals();
   });
@@ -656,6 +749,7 @@ describe("createLLMClient per-call maxTokens not capped (v2.0.0)", () => {
       provider: "openai",
       baseUrl: "http://localhost:0",
       model: "test-model",
+      apiKey: "test-key",
     }));
 
     mockStreamSimple.mockReset();

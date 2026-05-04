@@ -44,6 +44,22 @@ describe("listModelsForService (B8)", () => {
     expect(models.some((m) => m.id === "my-proxy-model")).toBe(true);
   });
 
+  it("ollama 无 apiKey 时也探测本地 /models 并保留本地动态模型", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ id: "qwen3.6:35b-a3b" }] }),
+    } as any);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const models = await listModelsForService("ollama");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:11434/v1/models",
+      expect.any(Object),
+    );
+    expect(models.some((m) => m.id === "qwen3.6:35b-a3b")).toBe(true);
+  });
+
   it("R4：env 补丁已删除 — INKOS_LLM_MODEL 不再污染跨 service 菜单", async () => {
     process.env.INKOS_LLM_MODEL = "my-secret-model";
     const models = await listModelsForService("anthropic");
