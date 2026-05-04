@@ -45,12 +45,25 @@ describe("probeModelsFromUpstream", () => {
     expect(result).toEqual([]);
   });
 
-  it("baseUrl 或 apiKey 空直接返回空数组,不发请求", async () => {
+  it("baseUrl 空直接返回空数组,不发请求", async () => {
     const r1 = await probeModelsFromUpstream("", "sk-test");
-    const r2 = await probeModelsFromUpstream("https://x.com", "");
     expect(r1).toEqual([]);
-    expect(r2).toEqual([]);
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("apiKey 空时仍可探测不需要鉴权的本地模型端点", async () => {
+    (globalThis.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ id: "qwen3.6:35b-a3b" }] }),
+    });
+
+    const result = await probeModelsFromUpstream("http://localhost:11434/v1", "");
+
+    expect(result).toEqual([{ id: "qwen3.6:35b-a3b", name: "qwen3.6:35b-a3b", contextWindow: 0 }]);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "http://localhost:11434/v1/models",
+      expect.objectContaining({ headers: {} }),
+    );
   });
 
   it("过滤掉 id 非字符串的 entry", async () => {
