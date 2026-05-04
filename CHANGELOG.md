@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.3.8
+
+### Release Focus
+
+本地模型热修：修复 1.3.7 后 Ollama / 本地 OpenAI-compatible 端点在建书与续写链路里的配置回归，确保 Studio 与 CLI 都能继续使用无 API key 的本地模型。
+
+### Bug Fixes
+
+- 修复 Studio 服务测试、模型列表与建书链路强制要求 API key，导致 Ollama / 本地端点不可用的问题
+- 修复 Studio 新建书籍页面实际 `/agent` 建书路径没有正确传递空 key 本地模型 client 的问题
+- 修复 CLI / Studio 使用 Ollama 动态模型名时被内置模型表误拦的问题
+- 修复 `write next --context` 没有真正进入章节规划和正文写作提示词的问题
+
 ## v1.3.7
 
 ### Release Focus
