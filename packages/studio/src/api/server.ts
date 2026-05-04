@@ -465,18 +465,21 @@ async function readEnvConfigStatus(root: string): Promise<EnvConfigStatus> {
 async function resolveConfiguredServiceBaseUrl(root: string, serviceId: string, inlineBaseUrl?: string): Promise<string | undefined> {
   if (inlineBaseUrl?.trim()) return inlineBaseUrl.trim();
 
-  if (!isCustomServiceId(serviceId)) {
-    return resolveServicePreset(serviceId)?.baseUrl;
-  }
+  // Try preset baseUrl first (for known services like minimax, bailian, etc.)
+  const presetBaseUrl = resolveServicePreset(serviceId)?.baseUrl;
+  if (presetBaseUrl) return presetBaseUrl;
 
+  // For services with empty preset baseUrl (e.g. newapi, ollama), check inkos.json config
   try {
     const config = await loadRawConfig(root);
     const services = normalizeServiceConfig((config.llm as Record<string, unknown> | undefined)?.services);
     const matched = services.find((entry) => serviceConfigKey(entry) === serviceId);
-    return matched?.baseUrl;
+    if (matched?.baseUrl) return matched.baseUrl;
   } catch {
-    return undefined;
+    // ignore
   }
+
+  return undefined;
 }
 
 async function resolveConfiguredServiceEntry(root: string, serviceId: string): Promise<ServiceConfigEntry | undefined> {
@@ -521,6 +524,7 @@ function buildModelCandidates(args: {
   envModel?: string | null;
   discoveredModels: Array<{ id: string; name: string }>;
   includeGenericFallbacks?: boolean;
+  isCustomService?: boolean;
 }): string[] {
   const seen = new Set<string>();
   const candidates: string[] = [];
@@ -532,7 +536,14 @@ function buildModelCandidates(args: {
     candidates.push(id);
   };
 
+  // User explicitly selected model takes absolute priority
   push(args.preferredModel);
+
+  // For custom services without explicit model, prefer discovered over hardcoded
+  if (!args.preferredModel && args.isCustomService && args.discoveredModels.length > 0) {
+    push(args.discoveredModels[0].id);
+  }
+
   push(args.configModel);
   push(args.envModel ?? undefined);
   for (const model of args.discoveredModels) push(model.id);
@@ -698,6 +709,7 @@ async function probeServiceCapabilities(args: {
     envModel: useCustomFallbacks ? envModel : undefined,
     discoveredModels: useEndpointCheckModel ? [] : discoveredModels,
     includeGenericFallbacks: useCustomFallbacks,
+    isCustomService: useCustomFallbacks,
   });
 
   if (modelCandidates.length === 0) {
@@ -1335,11 +1347,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
   app.post("/api/v1/services/:service/test", async (c) => {
     const service = c.req.param("service");
-    const { apiKey, baseUrl, apiFormat, stream } = await c.req.json<{
+    const { apiKey, baseUrl, apiFormat, stream, model } = await c.req.json<{
       apiKey: string;
       baseUrl?: string;
       apiFormat?: "chat" | "responses" | "anthropic";
       stream?: boolean;
+      model?: string;
     }>();
 
     const resolvedBaseUrl = await resolveConfiguredServiceBaseUrl(root, service, baseUrl);
@@ -1365,6 +1378,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       baseUrl: resolvedBaseUrl,
       preferredApiFormat: apiFormat,
       preferredStream: stream,
+      preferredModel: model,
       proxyUrl: typeof llm.proxyUrl === "string" ? llm.proxyUrl : undefined,
     });
 
@@ -1428,16 +1442,65 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     if (!endpoint) {
       return c.json({ models: [] });
     }
+
+    // Check for user-selected models in config
+    let selectedModels: string[] | null = null;
+    try {
+      const config = await loadRawConfig(root);
+      const services = normalizeServiceConfig((config.llm as Record<string, unknown> | undefined)?.services);
+      const entry = services.find((e) => serviceConfigKey(e) === service);
+      if (entry?.selectedModels && entry.selectedModels.length > 0) {
+        selectedModels = entry.selectedModels;
+      }
+    } catch {
+      // no config or no services — show all models
+    }
+
     const models = endpoint.models
       .filter((m) => m.enabled !== false)
       .filter((m) => isTextChatModelId(m.id))
+      .filter((m) => !selectedModels || selectedModels.includes(m.id))
       .map((m) => ({
         id: m.id,
         name: m.id,
         ...(typeof m.maxOutput === "number" ? { maxOutput: m.maxOutput } : {}),
         ...(m.contextWindowTokens > 0 ? { contextWindow: m.contextWindowTokens } : {}),
       }));
+
+    // Append custom model IDs not in the provider bank
+    if (selectedModels) {
+      const bankIds = new Set(endpoint.models.map((m) => m.id));
+      for (const id of selectedModels) {
+        if (!bankIds.has(id)) {
+          models.push({ id, name: id });
+        }
+      }
+    }
+
     return c.json({ models });
+  });
+
+  app.delete("/api/v1/services/:service/selected-models", async (c) => {
+    const service = c.req.param("service");
+    try {
+      const config = await loadRawConfig(root);
+      const llm = config.llm as Record<string, unknown> | undefined;
+      if (llm?.services !== undefined) {
+        const existingServices = normalizeServiceConfig(llm.services);
+        const updated = existingServices.map((entry) => {
+          if (serviceConfigKey(entry) === service && entry.selectedModels) {
+            const { selectedModels: _, ...rest } = entry;
+            return rest;
+          }
+          return entry;
+        });
+        llm.services = updated;
+        await saveRawConfig(root, config);
+      }
+    } catch {
+      // no config — nothing to reset
+    }
+    return c.json({ ok: true });
   });
 
   app.get("/api/v1/services/models", async (c) => {
@@ -1520,9 +1583,20 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const enriched = await listModelsForService(
       isCustomServiceId(service) ? "custom" : service,
       apiKey,
-      isCustomServiceId(service) ? resolvedBaseUrl ?? undefined : undefined,
+      resolvedBaseUrl ?? undefined,
     );
-    const models = filterTextChatModels(enriched).map((m) => ({
+    const filtered = filterTextChatModels(enriched);
+
+    // Always filter by selectedModels from service config. The service detail
+    // page is the model whitelist: what the user checked = what appears in
+    // routing dropdowns and elsewhere. Empty selection = empty result.
+    const serviceEntry = await resolveConfiguredServiceEntry(root, service);
+    const selected = serviceEntry?.selectedModels ?? [];
+    const final = filtered.filter((m) =>
+      selected.some((s) => s.toLowerCase() === m.id.toLowerCase()),
+    );
+
+    const models = final.map((m) => ({
       id: m.id,
       name: m.name,
       ...(m.maxOutput !== undefined ? { maxOutput: m.maxOutput } : {}),

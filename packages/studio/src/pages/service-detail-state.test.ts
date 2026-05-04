@@ -91,13 +91,12 @@ describe("saveServiceConfig", () => {
       "/services/config",
     ]);
     expect(bodies).toEqual([
-      { apiKey: "sk-live", apiFormat: "chat", stream: true, baseUrl: "https://api.openai.com/v1" },
+      { apiKey: "sk-live", apiFormat: "chat", stream: true, baseUrl: "https://api.openai.com/v1", model: "gpt-5.5" },
       { apiKey: "sk-live" },
       {
         service: "openai",
-        selectedModels: ["gpt-5.5"],
         services: [
-          { service: "openai", temperature: 0.7, apiFormat: "chat", stream: true, baseUrl: "https://api.openai.com/v1" },
+          { service: "openai", temperature: 0.7, apiFormat: "chat", stream: true, baseUrl: "https://api.openai.com/v1", selectedModels: ["gpt-5.5"] },
         ],
       },
     ]);
@@ -140,5 +139,38 @@ describe("saveServiceConfig", () => {
     });
 
     expect(calls).toEqual(["/services/openai/test"]);
+  });
+
+  it("puts selectedModels inside services[] entry for custom services", async () => {
+    const calls: string[] = [];
+    const bodies: unknown[] = [];
+    const fetchJsonImpl = vi.fn(async (path: string, init?: { body?: string }) => {
+      calls.push(path);
+      if (init?.body) bodies.push(JSON.parse(init.body));
+      if (path === "/services/custom%3Amyapi/secret") return { ok: true };
+      if (path === "/services/config") return { ok: true };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    await saveServiceConfig({
+      effectiveServiceId: "custom:myapi",
+      serviceId: "custom",
+      isCustom: true,
+      resolvedCustomName: "myapi",
+      apiKey: "sk-custom",
+      baseUrl: "https://myapi.example.com/v1",
+      apiFormat: "anthropic",
+      stream: true,
+      temperature: "1.0",
+      selectedModels: ["model-a", "model-b"],
+      fetchJsonImpl: fetchJsonImpl as never,
+    });
+
+    expect(calls).toEqual([
+      "/services/custom%3Amyapi/secret",
+      "/services/config",
+    ]);
+    const configBody = bodies[1] as Record<string, unknown>;
+    expect((configBody.services as Array<Record<string, unknown>>)[0].selectedModels).toEqual(["model-a", "model-b"]);
   });
 });

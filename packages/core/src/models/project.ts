@@ -8,6 +8,7 @@ const LLMServiceEntrySchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   apiFormat: z.enum(["chat", "responses", "anthropic"]).optional(),
   stream: z.boolean().optional(),
+  selectedModels: z.array(z.string()).optional(),
 });
 
 // C1 (v2.0.0 breaking): 删除 maxTokens / maxTokensCap 字段。

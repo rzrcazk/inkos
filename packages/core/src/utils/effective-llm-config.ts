@@ -50,6 +50,7 @@ interface ServiceConfigEntry {
   readonly maxTokens?: number;
   readonly apiFormat?: "chat" | "responses";
   readonly stream?: boolean;
+  readonly selectedModels?: readonly string[];
 }
 
 interface MutableDiagnostics {
@@ -318,6 +319,7 @@ function applyServiceEntry(llm: Record<string, unknown>, entry: ServiceConfigEnt
   else llm.apiFormat = resolveServicePreset(entry.service)?.api.startsWith("openai-responses") ? "responses" : "chat";
   if (entry.stream !== undefined) llm.stream = entry.stream;
   else if (transportDefaults?.stream !== undefined) llm.stream = transportDefaults.stream;
+  if (entry.selectedModels !== undefined) llm.selectedModels = entry.selectedModels;
 }
 
 function applyCommonEnv(
@@ -360,6 +362,9 @@ function normalizeServiceEntries(raw: unknown): ServiceConfigEntry[] {
         ...(typeof entry.maxTokens === "number" ? { maxTokens: entry.maxTokens } : {}),
         ...(entry.apiFormat === "chat" || entry.apiFormat === "responses" ? { apiFormat: entry.apiFormat } : {}),
         ...(typeof entry.stream === "boolean" ? { stream: entry.stream } : {}),
+        ...(Array.isArray(entry.selectedModels) ? {
+          selectedModels: entry.selectedModels.filter((m): m is string => typeof m === "string"),
+        } : {}),
       }));
   }
 
@@ -382,6 +387,9 @@ function normalizeServiceEntryFromPatch(serviceId: string, value: Record<string,
       ...(typeof value.maxTokens === "number" ? { maxTokens: value.maxTokens } : {}),
       ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
       ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
+      ...(Array.isArray(value.selectedModels) ? {
+        selectedModels: value.selectedModels.filter((m): m is string => typeof m === "string"),
+      } : {}),
     };
   }
 
@@ -394,6 +402,9 @@ function normalizeServiceEntryFromPatch(serviceId: string, value: Record<string,
       ...(typeof value.maxTokens === "number" ? { maxTokens: value.maxTokens } : {}),
       ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
       ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
+      ...(Array.isArray(value.selectedModels) ? {
+        selectedModels: value.selectedModels.filter((m): m is string => typeof m === "string"),
+      } : {}),
     };
   }
 
@@ -403,6 +414,9 @@ function normalizeServiceEntryFromPatch(serviceId: string, value: Record<string,
     ...(typeof value.maxTokens === "number" ? { maxTokens: value.maxTokens } : {}),
     ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
     ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
+    ...(Array.isArray(value.selectedModels) ? {
+      selectedModels: value.selectedModels.filter((m): m is string => typeof m === "string"),
+    } : {}),
   };
 }
 
@@ -438,8 +452,13 @@ function resolveServiceModel(
 
   const endpoint = getEndpoint(entry.service);
   const candidate = [defaultModel, currentModel]
-    .find((model): model is string => Boolean(model && modelBelongsToService(entry.service, model)));
+    .find((model): model is string => Boolean(model && modelBelongsToService(entry.service, entry.selectedModels, model)));
   if (candidate) return candidate;
+
+  // Prefer first selected model when available
+  if (entry.selectedModels && entry.selectedModels.length > 0) {
+    return entry.selectedModels[0];
+  }
 
   return endpoint?.checkModel
     ?? endpoint?.models.find((model) => model.enabled !== false)?.id
@@ -452,15 +471,17 @@ function assertModelBelongsToService(entry: ServiceConfigEntry | undefined, mode
   if (!entry || entry.service === "custom") return;
   const endpoint = getEndpoint(entry.service);
   if (!endpoint) return;
-  if (!modelBelongsToService(entry.service, model)) {
+  if (!modelBelongsToService(entry.service, entry.selectedModels, model)) {
     throw new Error(`模型 ${model} 不属于 ${entry.service} 服务，请切换服务或选择该服务下的模型。`);
   }
 }
 
-function modelBelongsToService(service: string, model: string): boolean {
+function modelBelongsToService(service: string, selectedModels: readonly string[] | undefined, model: string): boolean {
   if (serviceAllowsUnlistedModels(service)) return true;
   const endpoint = getEndpoint(service);
   if (!endpoint) return true;
+  // Custom model IDs in selectedModels are valid by user choice
+  if (selectedModels?.some((id) => id.toLowerCase() === model.toLowerCase())) return true;
   return endpoint.models.some((knownModel) => knownModel.id.toLowerCase() === model.toLowerCase());
 }
 

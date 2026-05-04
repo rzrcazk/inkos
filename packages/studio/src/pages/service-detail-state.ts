@@ -37,6 +37,7 @@ export async function probeServiceForDetail(
     readonly apiFormat: "chat" | "responses" | "anthropic";
     readonly stream: boolean;
     readonly baseUrl?: string;
+    readonly model?: string;
   },
   deps?: { readonly fetchJsonImpl?: JsonFetcher },
 ): Promise<ServiceProbeResponse> {
@@ -124,6 +125,39 @@ export async function saveServiceConfig(args: {
     };
   }
 
+  // Custom services: skip probe, save directly
+  if (args.isCustom) {
+    await fetchJsonImpl(`/services/${encodeURIComponent(args.effectiveServiceId)}/secret`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey: trimmedKey }),
+    });
+
+    await fetchJsonImpl("/services/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        service: args.effectiveServiceId,
+        services: [
+          {
+            service: "custom",
+            name: args.resolvedCustomName,
+            baseUrl: trimmedBaseUrl,
+            apiFormat: args.apiFormat,
+            stream: args.stream,
+            temperature: parseFloat(args.temperature),
+            ...(args.selectedModels && args.selectedModels.length > 0 ? { selectedModels: [...args.selectedModels] } : {}),
+          },
+        ],
+      }),
+    });
+
+    return {
+      status: { state: "connected", models: [] },
+      detectedConfig: null,
+    };
+  }
+
   let probe: ServiceProbeResponse;
   try {
     probe = await probeServiceForDetail(args.effectiveServiceId, {
@@ -131,6 +165,7 @@ export async function saveServiceConfig(args: {
       apiFormat: args.apiFormat,
       stream: args.stream,
       baseUrl: trimmedBaseUrl,
+      model: args.selectedModels?.[0],
     }, { fetchJsonImpl });
   } catch (error) {
     return {
@@ -162,19 +197,14 @@ export async function saveServiceConfig(args: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       service: args.effectiveServiceId,
-      ...(args.selectedModels && args.selectedModels.length > 0 ? { selectedModels: args.selectedModels } : {}),
       services: [
         {
-          service: args.isCustom ? "custom" : args.serviceId,
+          service: args.serviceId,
           temperature: parseFloat(args.temperature),
           apiFormat: savedApiFormat,
           stream: savedStream,
-          ...(args.isCustom ? {
-            name: args.resolvedCustomName,
-            baseUrl: savedBaseUrl,
-          } : {
-            baseUrl: savedBaseUrl,
-          }),
+          baseUrl: savedBaseUrl,
+          ...(args.selectedModels && args.selectedModels.length > 0 ? { selectedModels: [...args.selectedModels] } : {}),
         },
       ],
     }),

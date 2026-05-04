@@ -787,6 +787,43 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(body.groups[0]?.models.map((m) => m.id)).toEqual(["gemini-2.5-flash"]);
   });
 
+  it("bank endpoint always returns ALL models regardless of selectedModels", async () => {
+    await writeFile(join(root, "inkos.json"), JSON.stringify({
+      ...projectConfig,
+      llm: {
+        services: [
+          { service: "bailianCodingPlan", selectedModels: ["qwen-plus"] },
+        ],
+        defaultModel: "qwen-plus",
+      },
+    }, null, 2), "utf-8");
+    loadSecretsMock.mockResolvedValue({
+      services: {
+        bailianCodingPlan: { apiKey: "sk-bailian" },
+      },
+    });
+    getAllEndpointsMock.mockReturnValueOnce([
+      {
+        id: "bailianCodingPlan",
+        label: "百炼 Coding Plan",
+        group: "codingPlan",
+        models: [
+          { id: "qwen-plus", maxOutput: 32768, contextWindowTokens: 131072, enabled: true },
+          { id: "qwen-turbo", maxOutput: 16384, contextWindowTokens: 131072, enabled: true },
+          { id: "qwen-max", maxOutput: 8192, contextWindowTokens: 32768, enabled: true },
+        ],
+      },
+    ] as never);
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/services/models");
+    expect(response.status).toBe(200);
+    const body = await response.json() as { groups: Array<{ service: string; models: Array<{ id: string }> }> };
+    expect(body.groups[0]?.models.map((m) => m.id)).toEqual(["qwen-plus", "qwen-turbo", "qwen-max"]);
+  });
+
   it("returns custom model groups through the slow probe path", async () => {
     await writeFile(join(root, "inkos.json"), JSON.stringify({
       ...projectConfig,
@@ -824,6 +861,15 @@ describe("createStudioServer daemon lifecycle", () => {
   });
 
   it("filters non-text models out of live service model lists", async () => {
+    await writeFile(join(root, "inkos.json"), JSON.stringify({
+      ...projectConfig,
+      llm: {
+        services: [
+          { service: "google", selectedModels: ["gemini-2.5-flash", "gemini-3.1-flash-image-preview", "text-embedding-004"] },
+        ],
+        defaultModel: "gemini-2.5-flash",
+      },
+    }, null, 2), "utf-8");
     loadSecretsMock.mockResolvedValue({ services: { google: { apiKey: "sk-google" } } });
     listModelsForServiceMock.mockResolvedValueOnce([
       { id: "gemini-2.5-flash", name: "gemini-2.5-flash", reasoning: false, contextWindow: 1114112 },
@@ -1028,7 +1074,7 @@ describe("createStudioServer daemon lifecycle", () => {
       ...projectConfig,
       llm: {
         services: [
-          { service: "custom", name: "内网GPT", baseUrl: "https://llm.internal.corp/v1" },
+          { service: "custom", name: "内网GPT", baseUrl: "https://llm.internal.corp/v1", selectedModels: ["corp-chat"] },
         ],
         defaultModel: "corp-chat",
       },
@@ -1562,7 +1608,7 @@ describe("createStudioServer daemon lifecycle", () => {
       ...projectConfig,
       llm: {
         services: [
-          { service: "custom", name: "Switcher", baseUrl: "https://a.example.com/v1" },
+          { service: "custom", name: "Switcher", baseUrl: "https://a.example.com/v1", selectedModels: ["model-a"] },
         ],
       },
     }, null, 2), "utf-8");
@@ -1603,7 +1649,7 @@ describe("createStudioServer daemon lifecycle", () => {
       ...projectConfig,
       llm: {
         services: [
-          { service: "custom", name: "Switcher", baseUrl: "https://b.example.com/v1" },
+          { service: "custom", name: "Switcher", baseUrl: "https://b.example.com/v1", selectedModels: ["model-b"] },
         ],
       },
     }, null, 2), "utf-8");

@@ -56,6 +56,7 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
   const [stream, setStream] = useState(true);
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
   const [bankModels, setBankModels] = useState<BankModel[]>([]);
+  const [customModelId, setCustomModelId] = useState("");
 
   // -- Unified connection status --
   const [status, setStatus] = useState<ConnectionStatus>({ state: "idle" });
@@ -83,7 +84,8 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
         if (typeof matched.stream === "boolean") setStream(matched.stream);
         const savedModels = matched.selectedModels;
         if (Array.isArray(savedModels)) {
-          setSelectedModels(new Set(savedModels.filter((m): m is string => typeof m === "string")));
+          const filtered = savedModels.filter((m): m is string => typeof m === "string");
+          setSelectedModels(new Set(filtered));
         }
       })
       .catch(() => {});
@@ -101,7 +103,12 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
         if (cancelled) return;
         const models = data.models ?? [];
         setBankModels(models);
-        setSelectedModels(new Set(models.map((m) => m.id)));
+        setSelectedModels((prev) => {
+          if (prev.size > 0) return prev;  // already has saved config
+          const next = new Set(prev);
+          for (const m of models) next.add(m.id);
+          return next;
+        });
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -112,6 +119,22 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
   const label = isCustom ? (customName || persistedCustomName || "自定义服务") : (svc?.label ?? serviceId);
   const storeModels = useServiceStore((s) => s.modelsByService[effectiveServiceId]);
 
+  // Load API key once when service identity changes (not on every form edit)
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<{ apiKey?: string }>(`/services/${encodeURIComponent(effectiveServiceId)}/secret`)
+      .then((secret) => {
+        if (cancelled) return;
+        setApiKey(String(secret.apiKey ?? ""));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setApiKey("");
+      });
+    return () => { cancelled = true; };
+  }, [effectiveServiceId]);
+
+  // Re-check connection status when config changes (does NOT touch apiKey)
   useEffect(() => {
     let cancelled = false;
     void rehydrateServiceConnectionStatus({
@@ -124,7 +147,6 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
     })
       .then((result) => {
         if (cancelled) return;
-        setApiKey(result.apiKey);
         setStatus(result.status);
         if (result.status.state === "connected") {
           setStoreModels(effectiveServiceId, result.status.models);
@@ -151,11 +173,45 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
   const isConnected = Boolean(svc?.connected);
   const models = status.state === "connected" ? status.models : (storeModels ?? []);
   const isBusy = status.state === "testing" || status.state === "saving";
-  const allModels: DisplayModel[] = models.length > 0
+  const discoveredModels: DisplayModel[] = models.length > 0
     ? models.map((m) => ({ ...m }))
     : bankModels;
 
+  const allModels: DisplayModel[] = discoveredModels;
+
+  // Custom model IDs: IDs in selectedModels but not in allModels
+  const bankModelIds = new Set(allModels.map((m) => m.id));
+  const customModels: DisplayModel[] = Array.from(selectedModels)
+    .filter((id) => !bankModelIds.has(id))
+    .map((id) => ({ id, name: id }));
+
+  const displayModels: DisplayModel[] = [...allModels, ...customModels];
+
   // -- Handlers --
+  const handleResetModels = async () => {
+    try {
+      await fetchJson(`/services/${encodeURIComponent(serviceId)}/selected-models`, {
+        method: "DELETE",
+      });
+      setSelectedModels(new Set(bankModels.map((m) => m.id)));
+      setCustomModelId("");
+    } catch {
+      // silently ignore — config might not exist
+    }
+  };
+
+  const handleAddCustomModel = () => {
+    const trimmed = customModelId.trim();
+    if (!trimmed) return;
+    setSelectedModels((prev) => {
+      if (prev.has(trimmed)) return prev;
+      const next = new Set(prev);
+      next.add(trimmed);
+      return next;
+    });
+    setCustomModelId("");
+  };
+
   const handleTest = async () => {
     const trimmedKey = apiKey.trim();
     if (!trimmedKey) {
@@ -174,6 +230,11 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
         apiFormat,
         stream,
         baseUrl: baseUrl.trim(),
+        model: selectedModels.size > 0
+          ? [...selectedModels][0]
+          : allModels.length > 0
+            ? allModels[0].id
+            : undefined,
       });
       if (result.ok) {
         const probedModels = result.models ?? [];
@@ -345,14 +406,26 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
 
         {/* Models */}
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground/70 font-medium uppercase tracking-wider">
-            模型（{allModels.length}）
-          </p>
-          {allModels.length > 0 ? (
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground/70 font-medium uppercase tracking-wider">
+              模型（{displayModels.length}）
+            </p>
+            {!isCustom && bankModels.length > 0 && (
+              <button
+                type="button"
+                onClick={handleResetModels}
+                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+              >
+                重置为默认
+              </button>
+            )}
+          </div>
+          {displayModels.length > 0 ? (
             <div className="max-h-64 overflow-y-auto rounded-lg border border-border/30 bg-secondary/10 p-2 space-y-1">
-              {allModels.map((m) => {
+              {displayModels.map((m) => {
                 const id = m.id;
                 const name = m.name ?? m.id;
+                const isCustom = !bankModelIds.has(id);
                 const maxOut = "maxOutput" in m && typeof m.maxOutput === "number" ? m.maxOutput : null;
                 const ctxWin = "contextWindow" in m && typeof m.contextWindow === "number" ? m.contextWindow : null;
                 const checked = selectedModels.has(id);
@@ -372,6 +445,9 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
                       className="accent-primary"
                     />
                     <span className="flex-1 font-mono text-xs text-foreground">{name}</span>
+                    {isCustom && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-violet-100 text-violet-600 font-medium">自定义</span>
+                    )}
                     <span className="text-[10px] text-muted-foreground/60 tabular-nums">
                       {maxOut ? `${(maxOut / 1024).toFixed(0)}K out` : ""}{maxOut && ctxWin ? " · " : ""}{ctxWin ? `${(ctxWin / 1024).toFixed(0)}K ctx` : ""}
                     </span>
@@ -381,6 +457,26 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
             </div>
           ) : (
             <p className="text-xs text-muted-foreground/60">点击"测试连接"查看可用模型</p>
+          )}
+          {/* Custom model input */}
+          {!isCustom && (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={customModelId}
+                onChange={(e) => setCustomModelId(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddCustomModel(); }}
+                placeholder="添加自定义模型 ID"
+                className="flex-1 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs font-mono"
+              />
+              <button
+                type="button"
+                onClick={handleAddCustomModel}
+                className="px-3 py-2 text-xs rounded-lg border border-border/60 hover:bg-secondary/50 transition-colors"
+              >
+                添加
+              </button>
+            </div>
           )}
         </div>
 

@@ -81,3 +81,55 @@ describe("listEnabledModels", () => {
     expect(models).toEqual([]);
   });
 });
+
+describe("listEnabledModels with selectedModels", () => {
+  it("非空 selectedModels 返回过滤后的子集", () => {
+    const models = listEnabledModels("bailianCodingPlan", {
+      selectedModels: ["qwen3.6-plus"],
+    });
+    expect(models).toHaveLength(1);
+    expect(models[0].id).toBe("qwen3.6-plus");
+  });
+
+  it("空 selectedModels 返回全部（向后兼容）", () => {
+    const withFilter = listEnabledModels("bailianCodingPlan", { selectedModels: [] });
+    const withoutFilter = listEnabledModels("bailianCodingPlan");
+    expect(withFilter).toHaveLength(withoutFilter.length);
+  });
+
+  it("undefined selectedModels 返回全部（向后兼容）", () => {
+    const withFilter = listEnabledModels("bailianCodingPlan", { selectedModels: undefined });
+    const withoutFilter = listEnabledModels("bailianCodingPlan");
+    expect(withFilter).toHaveLength(withoutFilter.length);
+  });
+
+  it("自定义模型 ID 返回合成 stub", () => {
+    const models = listEnabledModels("bailianCodingPlan", {
+      selectedModels: ["my-fine-tuned-model"],
+    });
+    expect(models).toHaveLength(1);
+    expect(models[0].id).toBe("my-fine-tuned-model");
+    expect(models[0].maxOutput).toBe(24_576);
+    expect(models[0].contextWindowTokens).toBe(128_000);
+    expect(models[0].capabilities?.text).toBe(true);
+  });
+
+  it("bank 模型 + 自定义模型混合返回", () => {
+    const models = listEnabledModels("bailianCodingPlan", {
+      selectedModels: ["qwen3.6-plus", "my-custom-model"],
+    });
+    expect(models).toHaveLength(2);
+    expect(models.find((m) => m.id === "qwen3.6-plus")).toBeDefined();
+    expect(models.find((m) => m.id === "my-custom-model")).toBeDefined();
+  });
+
+  it("选中的 disabled 模型不返回", () => {
+    // anthropic 的 claude-sonnet-4-6 是 enabled !== false
+    const models = listEnabledModels("anthropic", {
+      selectedModels: ["nonexistent-disabled-model"],
+    });
+    // nonexistent IDs that are not in the bank get synthetic stubs (enabled: true)
+    expect(models).toHaveLength(1);
+    expect(models[0].id).toBe("nonexistent-disabled-model");
+  });
+});

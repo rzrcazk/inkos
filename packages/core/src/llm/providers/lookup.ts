@@ -12,6 +12,17 @@ const PROVIDER_PRIORITY: readonly string[] = [
   "openrouter", "aihubmix", "novita",
 ];
 
+/** 合成不在 provider bank 中的自定义模型 ID */
+function makeSyntheticModel(id: string): InkosModel {
+  return {
+    id,
+    maxOutput: 24_576,
+    contextWindowTokens: 128_000,
+    enabled: true,
+    capabilities: { text: true },
+  };
+}
+
 /**
  * 两层 lookup：
  * - Layer 1: 已知 provider 精确查（整串比较，不拆斜线）
@@ -48,11 +59,37 @@ export function lookupModel(
   return matches[0].model;
 }
 
+export interface ListModelsOptions {
+  readonly selectedModels?: readonly string[];
+}
+
 /** 某 service 下可用（enabled !== false）的模型列表 */
-export function listEnabledModels(serviceId: string): InkosModel[] {
+export function listEnabledModels(
+  serviceId: string,
+  options?: ListModelsOptions,
+): InkosModel[] {
   const provider = getEndpoint(serviceId);
   if (!provider) return [];
-  return provider.models.filter((m) => m.enabled !== false);
+
+  const ids = options?.selectedModels;
+  if (!ids || ids.length === 0) {
+    return provider.models.filter((m) => m.enabled !== false);
+  }
+
+  const selected = new Set(ids.map((id) => id.toLowerCase()));
+  const result: InkosModel[] = [];
+  for (const m of provider.models) {
+    if (selected.has(m.id.toLowerCase()) && m.enabled !== false) {
+      result.push(m);
+    }
+  }
+  // Append synthetic stubs for custom model IDs not in the bank
+  for (const id of ids) {
+    if (!provider.models.some((m) => m.id.toLowerCase() === id.toLowerCase())) {
+      result.push(makeSyntheticModel(id));
+    }
+  }
+  return result;
 }
 
 export function isActiveTextModel(model: InkosModel): boolean {
@@ -63,8 +100,30 @@ export function isActiveTextModel(model: InkosModel): boolean {
   return true;
 }
 
-export function listActiveTextModels(serviceId: string): InkosModel[] {
+export function listActiveTextModels(
+  serviceId: string,
+  options?: ListModelsOptions,
+): InkosModel[] {
   const provider = getEndpoint(serviceId);
   if (!provider) return [];
-  return provider.models.filter(isActiveTextModel);
+
+  const ids = options?.selectedModels;
+  if (!ids || ids.length === 0) {
+    return provider.models.filter(isActiveTextModel);
+  }
+
+  const selected = new Set(ids.map((id) => id.toLowerCase()));
+  const result: InkosModel[] = [];
+  for (const m of provider.models) {
+    if (selected.has(m.id.toLowerCase()) && isActiveTextModel(m)) {
+      result.push(m);
+    }
+  }
+  // Append synthetic stubs for custom model IDs not in the bank
+  for (const id of ids) {
+    if (!provider.models.some((m) => m.id.toLowerCase() === id.toLowerCase())) {
+      result.push(makeSyntheticModel(id));
+    }
+  }
+  return result;
 }
