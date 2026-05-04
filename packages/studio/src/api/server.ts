@@ -3077,11 +3077,15 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
           apiFormat: endpoint?.transportDefaults?.apiFormat ?? (preset?.api.startsWith("openai-responses") ? "responses" : "chat"),
           stream: endpoint?.transportDefaults?.stream ?? true,
         };
-        const pipeline = new PipelineRunner(await buildPipelineConfig({
+        // Clear modelOverrides so PipelineRunner.resolveOverride("radar")
+        // falls through to the pipeline-level client/model instead of a
+        // stale override (e.g. radar → gpt-5.2 on a different service).
+        const pipelineConfig = await buildPipelineConfig({
           client: createLLMClient(llmConfig),
           model: resolvedModel,
           currentConfig,
-        }));
+        });
+        const pipeline = new PipelineRunner({ ...pipelineConfig, modelOverrides: undefined });
         const result = await pipeline.runRadar();
         broadcast("radar:complete", { result });
         return c.json(result);
