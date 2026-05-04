@@ -18,6 +18,7 @@ import { StyleManager } from "./pages/StyleManager";
 import { ImportManager } from "./pages/ImportManager";
 import { RadarView } from "./pages/RadarView";
 import { DoctorView } from "./pages/DoctorView";
+import { ModelRoutingPage } from "./pages/ModelRoutingPage";
 import { LanguageSelector } from "./pages/LanguageSelector";
 import { BookSidebar, BookSidebarToggle } from "./components/chat/BookSidebar";
 import { useSSE } from "./hooks/use-sse";
@@ -83,6 +84,7 @@ export function App() {
     toImport: () => setRoute({ page: "import" }),
     toRadar: () => setRoute({ page: "radar" }),
     toDoctor: () => setRoute({ page: "doctor" }),
+    toModelRouting: () => setRoute({ page: "model-routing" }),
   };
 
   const activeBookId = deriveActiveBookId(route);
@@ -253,6 +255,11 @@ export function App() {
           {route.page === "doctor" && (
             <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
               <DoctorView nav={nav} theme={theme} t={t} />
+            </div>
+          )}
+          {route.page === "model-routing" && (
+            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+              <ModelRoutingPage nav={nav} t={t} />
             </div>
           )}
         </main>

@@ -35,6 +35,7 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  Route,
 } from "lucide-react";
 
 interface BookSummary {
@@ -57,6 +58,7 @@ interface Nav {
   toImport: () => void;
   toRadar: () => void;
   toDoctor: () => void;
+  toModelRouting: () => void;
 }
 
 export function Sidebar({ nav, activePage, sse, t }: {
@@ -328,6 +330,12 @@ export function Sidebar({ nav, activePage, sse, t }: {
               icon={<Settings size={16} />}
               active={activePage === "services"}
               onClick={nav.toServices}
+            />
+            <SidebarItem
+              label={t("config.modelRouting")}
+              icon={<Route size={16} />}
+              active={activePage === "model-routing"}
+              onClick={nav.toModelRouting}
             />
 {/*            <SidebarItem
               label={t("nav.daemon")}

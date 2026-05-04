@@ -1280,6 +1280,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
             label: svc.name ?? "Custom",
             group: undefined,
             connected: Boolean(secrets.services[secretKey]?.apiKey),
+            baseUrl: svc.baseUrl ?? "",
+            api: svc.apiFormat === "anthropic" ? "anthropic-messages" : svc.apiFormat === "responses" ? "openai-responses" : "openai-completions",
           });
         }
       }
