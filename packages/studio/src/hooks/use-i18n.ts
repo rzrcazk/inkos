@@ -161,6 +161,7 @@ const strings = {
   "radar.model": { zh: "模型", en: "Model" },
   "radar.noConnectedService": { zh: "没有已连接的服务", en: "No connected services" },
   "radar.noModelsHint": { zh: "请先测试连接获取模型列表", en: "Test connection to get model list" },
+  "radar.loadingModels": { zh: "加载模型中...", en: "Loading models..." },
 
   // Doctor
   "doctor.title": { zh: "环境诊断", en: "Environment Check" },

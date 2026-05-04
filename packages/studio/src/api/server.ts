@@ -3049,7 +3049,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const currentConfig = await loadCurrentProjectConfig();
     broadcast("radar:start", {});
     try {
-      if (body.service && body.model) {
+      if (body.service) {
         const resolvedBaseUrl = await resolveConfiguredServiceBaseUrl(root, body.service);
         if (!resolvedBaseUrl) {
           throw new Error(`未知服务: ${body.service}`);
@@ -3059,20 +3059,27 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         if (!apiKey) {
           throw new Error(`请先为服务 ${body.service} 配置 API Key`);
         }
+        // Resolve model: use explicit selection, or fall back to endpoint's checkModel
         const endpoint = getEndpoint(body.service);
+        const resolvedModel = body.model
+          ?? endpoint?.checkModel
+          ?? endpoint?.models.find((m) => m.enabled !== false)?.id;
+        if (!resolvedModel) {
+          throw new Error(`服务 ${body.service} 没有可用模型，请先在服务商页面测试连接。`);
+        }
         const preset = resolveServicePreset(body.service);
         const llmConfig: LLMConfig = {
           service: body.service,
           provider: resolveServiceProviderFamily(body.service) ?? "openai",
           baseUrl: resolvedBaseUrl,
-          model: body.model,
+          model: resolvedModel,
           apiKey,
           apiFormat: endpoint?.transportDefaults?.apiFormat ?? (preset?.api.startsWith("openai-responses") ? "responses" : "chat"),
           stream: endpoint?.transportDefaults?.stream ?? true,
         };
         const pipeline = new PipelineRunner(await buildPipelineConfig({
           client: createLLMClient(llmConfig),
-          model: body.model,
+          model: resolvedModel,
           currentConfig,
         }));
         const result = await pipeline.runRadar();

@@ -31,6 +31,7 @@ export function RadarView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
   // -- Service / model selection --
   const services = useServiceStore((s) => s.services);
   const modelsByService = useServiceStore((s) => s.modelsByService);
+  const bankModelsLoading = useServiceStore((s) => s.bankModelsLoading);
   const fetchServices = useServiceStore((s) => s.fetchServices);
   const fetchBankModels = useServiceStore((s) => s.fetchBankModels);
   const fetchCustomModels = useServiceStore((s) => s.fetchCustomModels);
@@ -54,31 +55,30 @@ export function RadarView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
     }
   }, [connectedServices, selectedService]);
 
+  // Auto-select model once bank models load for the current service
   useEffect(() => {
+    if (!selectedService) return;
     const models = modelsByService[selectedService] ?? [];
-    if (!selectedModel && models.length > 0) {
-      setSelectedModel(models[0].id);
-    }
-    if (selectedModel && models.length > 0 && !models.some((m) => m.id === selectedModel)) {
+    if (models.length > 0 && !selectedModel) {
       setSelectedModel(models[0].id);
     }
   }, [selectedService, modelsByService, selectedModel]);
 
   const availableModels = modelsByService[selectedService] ?? [];
+  const modelsLoadedForSelected = availableModels.length > 0;
+  const isLoadingModels = bankModelsLoading && selectedService && !modelsLoadedForSelected;
+  const modelsReady = !isLoadingModels && modelsLoadedForSelected;
 
   const handleScan = async () => {
+    if (!selectedService || !selectedModel) return;
     setLoading(true);
     setError("");
     setResult(null);
     try {
-      const body =
-        selectedService && selectedModel
-          ? { service: selectedService, model: selectedModel }
-          : undefined;
       const data = await fetchJson<RadarResult>("/radar/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body ?? {}),
+        body: JSON.stringify({ service: selectedService, model: selectedModel }),
       });
       setResult(data);
     } catch (e) {
@@ -102,11 +102,11 @@ export function RadarView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
         </h1>
         <button
           onClick={handleScan}
-          disabled={loading || !selectedService || !selectedModel}
+          disabled={loading || !modelsReady}
           className={`px-5 py-2.5 text-sm rounded-lg ${c.btnPrimary} disabled:opacity-30 flex items-center gap-2`}
         >
           {loading ? <Loader2 size={14} className="animate-spin" /> : <Target size={14} />}
-          {loading ? t("radar.scanning") : t("radar.scan")}
+          {loading ? t("radar.scanning") : !modelsReady ? t("radar.loadingModels") : t("radar.scan")}
         </button>
       </div>
 
@@ -134,10 +134,12 @@ export function RadarView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
           <select
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
-            disabled={loading || availableModels.length === 0}
+            disabled={loading || !modelsReady}
             className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm"
           >
-            {availableModels.length === 0 ? (
+            {isLoadingModels ? (
+              <option value="">{t("radar.loadingModels")}</option>
+            ) : availableModels.length === 0 ? (
               <option value="">{t("radar.noModelsHint")}</option>
             ) : (
               availableModels.map((m) => (
