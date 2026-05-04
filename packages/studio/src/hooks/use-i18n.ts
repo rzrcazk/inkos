@@ -157,6 +157,10 @@ const strings = {
   "radar.scanning": { zh: "扫描中...", en: "Scanning..." },
   "radar.summary": { zh: "市场概要", en: "Market Summary" },
   "radar.emptyHint": { zh: "点击「扫描市场」分析当前趋势和机会", en: "Click \"Scan Market\" to analyze trends and opportunities" },
+  "radar.service": { zh: "服务商", en: "Service" },
+  "radar.model": { zh: "模型", en: "Model" },
+  "radar.noConnectedService": { zh: "没有已连接的服务", en: "No connected services" },
+  "radar.noModelsHint": { zh: "请先测试连接获取模型列表", en: "Test connection to get model list" },
 
   // Doctor
   "doctor.title": { zh: "环境诊断", en: "Environment Check" },

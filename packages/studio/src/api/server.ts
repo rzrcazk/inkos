@@ -32,6 +32,7 @@ import {
   listModelsForService,
   isApiKeyOptionalForEndpoint,
   getAllEndpoints,
+  getEndpoint,
   probeModelsFromUpstream,
   fetchWithProxy,
   chatCompletion,
@@ -40,6 +41,7 @@ import {
   type ResolvedModel,
   type PipelineConfig,
   type ProjectConfig,
+  type LLMConfig,
   type LogSink,
   type LogEntry,
 } from "@actalk/inkos-core";
@@ -3043,9 +3045,41 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   // --- Radar Scan ---
 
   app.post("/api/v1/radar/scan", async (c) => {
+    const body = await c.req.json<{ service?: string; model?: string }>().catch(() => ({}));
+    const currentConfig = await loadCurrentProjectConfig();
     broadcast("radar:start", {});
     try {
-      const pipeline = new PipelineRunner(await buildPipelineConfig());
+      if (body.service && body.model) {
+        const resolvedBaseUrl = await resolveConfiguredServiceBaseUrl(root, body.service);
+        if (!resolvedBaseUrl) {
+          throw new Error(`未知服务: ${body.service}`);
+        }
+        const secrets = await loadSecrets(root);
+        const apiKey = secrets.services[body.service]?.apiKey ?? "";
+        if (!apiKey) {
+          throw new Error(`请先为服务 ${body.service} 配置 API Key`);
+        }
+        const endpoint = getEndpoint(body.service);
+        const preset = resolveServicePreset(body.service);
+        const llmConfig: LLMConfig = {
+          service: body.service,
+          provider: resolveServiceProviderFamily(body.service) ?? "openai",
+          baseUrl: resolvedBaseUrl,
+          model: body.model,
+          apiKey,
+          apiFormat: endpoint?.transportDefaults?.apiFormat ?? (preset?.api.startsWith("openai-responses") ? "responses" : "chat"),
+          stream: endpoint?.transportDefaults?.stream ?? true,
+        };
+        const pipeline = new PipelineRunner(await buildPipelineConfig({
+          client: createLLMClient(llmConfig),
+          model: body.model,
+          currentConfig,
+        }));
+        const result = await pipeline.runRadar();
+        broadcast("radar:complete", { result });
+        return c.json(result);
+      }
+      const pipeline = new PipelineRunner(await buildPipelineConfig({ currentConfig }));
       const result = await pipeline.runRadar();
       broadcast("radar:complete", { result });
       return c.json(result);

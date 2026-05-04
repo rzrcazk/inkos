@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
 import { fetchJson } from "../hooks/use-api";
 import { TrendingUp, Loader2, Target } from "lucide-react";
+import { useServiceStore } from "../store/service";
 
 interface Recommendation {
   readonly confidence: number;
@@ -27,12 +28,58 @@ export function RadarView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // -- Service / model selection --
+  const services = useServiceStore((s) => s.services);
+  const modelsByService = useServiceStore((s) => s.modelsByService);
+  const fetchServices = useServiceStore((s) => s.fetchServices);
+  const fetchBankModels = useServiceStore((s) => s.fetchBankModels);
+  const fetchCustomModels = useServiceStore((s) => s.fetchCustomModels);
+
+  useEffect(() => {
+    void fetchServices();
+    void fetchBankModels();
+    void fetchCustomModels();
+  }, [fetchServices, fetchBankModels, fetchCustomModels]);
+
+  const connectedServices = services.filter((s) => s.connected);
+
+  // Default: pick first connected service, first model
+  const [selectedService, setSelectedService] = useState("");
+  const [selectedModel, setSelectedModel] = useState("");
+
+  useEffect(() => {
+    if (!selectedService && connectedServices.length > 0) {
+      const first = connectedServices[0];
+      setSelectedService(first.service);
+    }
+  }, [connectedServices, selectedService]);
+
+  useEffect(() => {
+    const models = modelsByService[selectedService] ?? [];
+    if (!selectedModel && models.length > 0) {
+      setSelectedModel(models[0].id);
+    }
+    if (selectedModel && models.length > 0 && !models.some((m) => m.id === selectedModel)) {
+      setSelectedModel(models[0].id);
+    }
+  }, [selectedService, modelsByService, selectedModel]);
+
+  const availableModels = modelsByService[selectedService] ?? [];
+
   const handleScan = async () => {
     setLoading(true);
     setError("");
     setResult(null);
     try {
-      const data = await fetchJson<RadarResult>("/radar/scan", { method: "POST" });
+      const body =
+        selectedService && selectedModel
+          ? { service: selectedService, model: selectedModel }
+          : undefined;
+      const data = await fetchJson<RadarResult>("/radar/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body ?? {}),
+      });
       setResult(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -55,12 +102,50 @@ export function RadarView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunct
         </h1>
         <button
           onClick={handleScan}
-          disabled={loading}
+          disabled={loading || !selectedService || !selectedModel}
           className={`px-5 py-2.5 text-sm rounded-lg ${c.btnPrimary} disabled:opacity-30 flex items-center gap-2`}
         >
           {loading ? <Loader2 size={14} className="animate-spin" /> : <Target size={14} />}
           {loading ? t("radar.scanning") : t("radar.scan")}
         </button>
+      </div>
+
+      {/* Service & Model selector */}
+      <div className="flex gap-4 items-end">
+        <div className="flex-1 space-y-1.5">
+          <label className="text-xs text-muted-foreground/70 font-medium">{t("radar.service")}</label>
+          <select
+            value={selectedService}
+            onChange={(e) => { setSelectedService(e.target.value); setSelectedModel(""); }}
+            disabled={loading}
+            className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm"
+          >
+            {connectedServices.length === 0 && (
+              <option value="">{t("radar.noConnectedService")}</option>
+            )}
+            {connectedServices.map((svc) => (
+              <option key={svc.service} value={svc.service}>{svc.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex-1 space-y-1.5">
+          <label className="text-xs text-muted-foreground/70 font-medium">{t("radar.model")}</label>
+          <select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            disabled={loading || availableModels.length === 0}
+            className="w-full rounded-lg border border-border/60 bg-background px-3 py-2 text-sm"
+          >
+            {availableModels.length === 0 ? (
+              <option value="">{t("radar.noModelsHint")}</option>
+            ) : (
+              availableModels.map((m) => (
+                <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
+              ))
+            )}
+          </select>
+        </div>
       </div>
 
       {error && (
