@@ -28,7 +28,7 @@ describe("resolveEffectiveLLMConfig", () => {
     await writeFile(join(root, ".inkos", "secrets.json"), JSON.stringify({ services }, null, 2), "utf-8");
   }
 
-  it("Studio consumer 使用 Studio/project 配置，并忽略旧顶层 model/baseUrl", async () => {
+  it("Studio consumer 使用 service 配置并从 secrets 获取 API key", async () => {
     await writeProject({
       configSource: "studio",
       service: "google",
@@ -43,7 +43,6 @@ describe("resolveEffectiveLLMConfig", () => {
     const result = await resolveEffectiveLLMConfig({
       consumer: "studio",
       projectRoot: root,
-      envLayers: { global: {}, project: {}, process: {} },
       requireApiKey: true,
     });
 
@@ -54,10 +53,9 @@ describe("resolveEffectiveLLMConfig", () => {
     expect(result.llm.model).toBe("gemini-2.5-flash");
     expect(result.llm.apiKey).toBe("sk-google");
     expect(result.diagnostics.apiKeySource).toBe("studio-secret");
-    expect(result.diagnostics.warnings.join("\n")).toContain("旧顶层");
   });
 
-  it("CLI consumer 允许 INKOS_LLM_SERVICE 切换服务，并从 provider bank 推导 baseUrl", async () => {
+  it("CLI 通过 --service 切换服务", async () => {
     await writeProject({
       configSource: "studio",
       service: "google",
@@ -72,25 +70,18 @@ describe("resolveEffectiveLLMConfig", () => {
     const result = await resolveEffectiveLLMConfig({
       consumer: "cli",
       projectRoot: root,
-      envLayers: {
-        global: {},
-        project: {
-          INKOS_LLM_SERVICE: "moonshot",
-          INKOS_LLM_MODEL: "kimi-k2.5",
-        },
-        process: {},
-      },
+      cli: { service: "moonshot", model: "kimi-k2.5" },
     });
 
     expect(result.llm.service).toBe("moonshot");
     expect(result.llm.baseUrl).toBe("https://api.moonshot.cn/v1");
     expect(result.llm.model).toBe("kimi-k2.5");
     expect(result.llm.apiKey).toBe("sk-moon");
-    expect(result.diagnostics.serviceSource).toBe("env");
-    expect(result.diagnostics.modelSource).toBe("env");
+    expect(result.diagnostics.serviceSource).toBe("cli");
+    expect(result.diagnostics.modelSource).toBe("cli");
   });
 
-  it("CLI consumer 兼容旧 env：没有 INKOS_LLM_SERVICE 时从 baseUrl 反推 service", async () => {
+  it("默认使用第一个 service", async () => {
     await writeProject({
       configSource: "studio",
       service: "google",
@@ -102,100 +93,17 @@ describe("resolveEffectiveLLMConfig", () => {
     const result = await resolveEffectiveLLMConfig({
       consumer: "cli",
       projectRoot: root,
-      envLayers: {
-        global: {
-          INKOS_LLM_PROVIDER: "custom",
-          INKOS_LLM_BASE_URL: "https://api.moonshot.cn/v1",
-          INKOS_LLM_MODEL: "kimi-k2.5",
-          INKOS_LLM_API_KEY: "sk-env-moon",
-        },
-        project: {},
-        process: {},
-      },
-    });
-
-    expect(result.llm.service).toBe("moonshot");
-    expect(result.llm.baseUrl).toBe("https://api.moonshot.cn/v1");
-    expect(result.llm.model).toBe("kimi-k2.5");
-    expect(result.llm.apiKey).toBe("sk-env-moon");
-    expect(result.diagnostics.serviceSource).toBe("env");
-  });
-
-  it("Studio consumer 不让任何 env 里的旧模型污染 Studio service", async () => {
-    await writeProject({
-      configSource: "studio",
-      service: "google",
-      services: [{ service: "google" }],
-      defaultModel: "gemini-2.5-flash",
-    });
-    await writeSecrets({ google: { apiKey: "sk-google" } });
-
-    const result = await resolveEffectiveLLMConfig({
-      consumer: "studio",
-      projectRoot: root,
-      envLayers: {
-        global: {
-          INKOS_LLM_SERVICE: "moonshot",
-          INKOS_LLM_MODEL: "kimi-k2.5",
-          INKOS_LLM_API_KEY: "sk-global-moon",
-        },
-        project: {
-          INKOS_LLM_SERVICE: "deepseek",
-          INKOS_LLM_MODEL: "deepseek-chat",
-          INKOS_LLM_API_KEY: "sk-project-deepseek",
-        },
-        process: {
-          INKOS_LLM_SERVICE: "zhipu",
-          INKOS_LLM_MODEL: "glm-4-flash",
-          INKOS_LLM_API_KEY: "sk-process-zhipu",
-        },
-      },
-      requireApiKey: true,
     });
 
     expect(result.llm.service).toBe("google");
     expect(result.llm.model).toBe("gemini-2.5-flash");
     expect(result.llm.apiKey).toBe("sk-google");
-    expect(result.diagnostics.warnings.join("\n")).toContain("Studio 运行时不会使用 env");
   });
 
-  it("旧 configSource=env 保持 legacy-env 行为", async () => {
+  it("CLI --service 覆盖会切换到目标 service 的 endpoint 默认值", async () => {
     await writeProject({
-      configSource: "env",
-      provider: "openai",
-      baseUrl: "https://stale.example.com/v1",
-      model: "stale-model",
-      services: [{ service: "google" }],
-      defaultModel: "gemini-2.5-flash",
-    });
-    await writeSecrets({ google: { apiKey: "sk-google" } });
-
-    const result = await resolveEffectiveLLMConfig({
-      consumer: "cli",
-      projectRoot: root,
-      envLayers: {
-        global: {
-          INKOS_LLM_PROVIDER: "custom",
-          INKOS_LLM_BASE_URL: "https://api.example.com/v1",
-          INKOS_LLM_MODEL: "legacy-model",
-          INKOS_LLM_API_KEY: "sk-env",
-        },
-        project: {},
-        process: {},
-      },
-    });
-
-    expect(result.diagnostics.configMode).toBe("legacy-env");
-    expect(result.llm.service).toBe("custom");
-    expect(result.llm.provider).toBe("custom");
-    expect(result.llm.baseUrl).toBe("https://api.example.com/v1");
-    expect(result.llm.model).toBe("legacy-model");
-    expect(result.llm.apiKey).toBe("sk-env");
-  });
-
-  it("legacy-env 模式下 CLI --service 覆盖会切换到目标 service 的 endpoint 默认值", async () => {
-    await writeProject({
-      configSource: "env",
+      configSource: "studio",
+      service: "moonshot",
       provider: "custom",
       baseUrl: "https://api.moonshot.cn/v1",
       model: "kimi-k2.5",
@@ -204,95 +112,44 @@ describe("resolveEffectiveLLMConfig", () => {
     const result = await resolveEffectiveLLMConfig({
       consumer: "cli",
       projectRoot: root,
-      envLayers: {
-        global: {
-          INKOS_LLM_PROVIDER: "custom",
-          INKOS_LLM_BASE_URL: "https://api.moonshot.cn/v1",
-          INKOS_LLM_MODEL: "kimi-k2.5",
-          INKOS_LLM_API_KEY: "sk-moon",
-        },
-        project: {},
-        process: {
-          GOOGLE_API_KEY: "sk-google",
-        },
-      },
       cli: {
         service: "google",
         model: "gemini-2.5-flash",
-        apiKeyEnv: "GOOGLE_API_KEY",
       },
+      requireApiKey: false,
     });
 
-    expect(result.diagnostics.configMode).toBe("legacy-env");
     expect(result.llm.service).toBe("google");
     expect(result.llm.provider).toBe("openai");
     expect(result.llm.baseUrl).toBe("https://generativelanguage.googleapis.com/v1beta");
     expect(result.llm.apiFormat).toBe("chat");
     expect(result.llm.model).toBe("gemini-2.5-flash");
-    expect(result.llm.apiKey).toBe("sk-google");
+    expect(result.llm.apiKey).toBe("");
   });
 
-  it("legacy-env 模式下 CLI transport 覆盖优先级高于 env", async () => {
+  it("CLI transport 覆盖", async () => {
     await writeProject({
-      configSource: "env",
-      provider: "openai",
-      baseUrl: "https://api.example.com/v1",
-      model: "legacy-model",
+      configSource: "studio",
+      service: "google",
+      services: [{ service: "google", apiFormat: "chat", stream: true }],
+      defaultModel: "gemini-2.5-flash",
     });
+    await writeSecrets({ google: { apiKey: "sk-google" } });
 
     const result = await resolveEffectiveLLMConfig({
       consumer: "cli",
       projectRoot: root,
-      envLayers: {
-        global: {
-          INKOS_LLM_PROVIDER: "openai",
-          INKOS_LLM_BASE_URL: "https://api.example.com/v1",
-          INKOS_LLM_MODEL: "legacy-model",
-          INKOS_LLM_API_KEY: "sk-env",
-          INKOS_LLM_API_FORMAT: "chat",
-          INKOS_LLM_STREAM: "true",
-        },
-        project: {},
-        process: {},
-      },
       cli: {
         apiFormat: "responses",
         stream: false,
       },
     });
 
-    expect(result.diagnostics.configMode).toBe("legacy-env");
     expect(result.llm.apiFormat).toBe("responses");
     expect(result.llm.stream).toBe(false);
   });
 
-  it("保留旧 INKOS_LLM_EXTRA_* 和 INKOS_DEFAULT_LANGUAGE 行为", async () => {
-    await writeProject({
-      configSource: "env",
-      provider: "openai",
-      baseUrl: "https://api.example.com/v1",
-      model: "legacy-model",
-    });
-
-    const result = await resolveEffectiveLLMConfig({
-      consumer: "cli",
-      projectRoot: root,
-      envLayers: {
-        global: {},
-        project: {
-          INKOS_LLM_API_KEY: "sk-env",
-          INKOS_LLM_EXTRA_top_p: "0.9",
-          INKOS_DEFAULT_LANGUAGE: "en",
-        },
-        process: {},
-      },
-    });
-
-    expect(result.config.language).toBe("en");
-    expect(result.llm.extra).toMatchObject({ top_p: 0.9 });
-  });
-
-  it("CLI override 优先级高于 env", async () => {
+  it("CLI override 优先级高于 project 配置", async () => {
     await writeProject({
       configSource: "studio",
       service: "google",
@@ -304,11 +161,6 @@ describe("resolveEffectiveLLMConfig", () => {
     const result = await resolveEffectiveLLMConfig({
       consumer: "cli",
       projectRoot: root,
-      envLayers: {
-        global: {},
-        project: { INKOS_LLM_SERVICE: "google", INKOS_LLM_MODEL: "gemini-2.5-pro" },
-        process: {},
-      },
       cli: { service: "zhipu", model: "glm-4-flash" },
     });
 
@@ -319,7 +171,7 @@ describe("resolveEffectiveLLMConfig", () => {
     expect(result.diagnostics.modelSource).toBe("cli");
   });
 
-  it("CLI 指定 service 时不会继承旧 env 的 baseUrl/model/apiKey", async () => {
+  it("CLI 指定 service 时不会继承旧配置的 baseUrl/model/apiKey", async () => {
     await writeProject({
       configSource: "studio",
       service: "google",
@@ -331,16 +183,6 @@ describe("resolveEffectiveLLMConfig", () => {
     const result = await resolveEffectiveLLMConfig({
       consumer: "cli",
       projectRoot: root,
-      envLayers: {
-        global: {
-          INKOS_LLM_PROVIDER: "custom",
-          INKOS_LLM_BASE_URL: "https://api.moonshot.cn/v1",
-          INKOS_LLM_MODEL: "kimi-k2.5",
-          INKOS_LLM_API_KEY: "sk-env-moon",
-        },
-        project: {},
-        process: {},
-      },
       cli: { service: "google" },
     });
 
@@ -366,11 +208,7 @@ describe("resolveEffectiveLLMConfig", () => {
     await expect(resolveEffectiveLLMConfig({
       consumer: "cli",
       projectRoot: root,
-      envLayers: {
-        global: {},
-        project: { INKOS_LLM_MODEL: "kimi-k2.5" },
-        process: {},
-      },
+      cli: { model: "kimi-k2.5" },
     })).rejects.toThrow(/模型.*kimi-k2\.5.*不属于.*google/);
   });
 
@@ -477,10 +315,24 @@ describe("resolveEffectiveLLMConfig", () => {
     const result = await resolveEffectiveLLMConfig({
       consumer: "cli",
       projectRoot: root,
-      envLayers: { global: {}, project: {}, process: {} },
     });
 
     expect(result.llm.service).toBe("minimaxCodingPlan");
     expect(result.llm.stream).toBe(false);
+  });
+
+  it("没有 API key 且 requireApiKey 为 true 时抛出错误", async () => {
+    await writeProject({
+      configSource: "studio",
+      service: "google",
+      services: [{ service: "google" }],
+      defaultModel: "gemini-2.5-flash",
+    });
+
+    await expect(resolveEffectiveLLMConfig({
+      consumer: "cli",
+      projectRoot: root,
+      requireApiKey: true,
+    })).rejects.toThrow(/Studio LLM API key not set/);
   });
 });
