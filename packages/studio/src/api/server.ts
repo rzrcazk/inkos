@@ -2645,6 +2645,28 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     return c.json({ ok: true });
   });
 
+  // --- Task routes ---
+
+  app.get("/api/v1/project/routes", async (c) => {
+    const raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8"));
+    return c.json({ routes: (raw.llm?.routes as Record<string, unknown>) ?? {} });
+  });
+
+  app.put("/api/v1/project/routes", async (c) => {
+    const { routes } = await c.req.json<{ routes: Record<string, { service: string; model: string }> }>();
+    const configPath = join(root, "inkos.json");
+    const raw = JSON.parse(await readFile(configPath, "utf-8"));
+    if (!raw.llm) raw.llm = {};
+    if (routes && Object.keys(routes).length > 0) {
+      raw.llm.routes = routes;
+    } else {
+      delete raw.llm.routes;
+    }
+    const { writeFile: writeFileFs } = await import("node:fs/promises");
+    await writeFileFs(configPath, JSON.stringify(raw, null, 2), "utf-8");
+    return c.json({ ok: true });
+  });
+
   // --- Notify channels ---
 
   app.get("/api/v1/project/notify", async (c) => {

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { useApi, putApi } from "../hooks/use-api";
+import { useApi, putApi, fetchJson } from "../hooks/use-api";
 import { useServiceStore } from "../store/service";
 import type { TFunction, StringKey } from "../hooks/use-i18n";
 import { useSmartRouting } from "../hooks/use-smart-routing";
@@ -32,6 +32,11 @@ const AGENTS = [
   { key: "architect", labelKey: "config.agent.architect" as const },
   { key: "radar", labelKey: "config.agent.radar" as const },
   { key: "chapter-analyzer", labelKey: "config.agent.chapterAnalyzer" as const },
+] as const;
+
+const TASK_ROUTES = [
+  { key: "draft", label: "更新草案" },
+  { key: "write-next", label: "写下一章" },
 ] as const;
 
 interface AgentOverride {
@@ -77,6 +82,41 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
     setDefaultService(servicesConfig.service ?? "");
     setDefaultModel(servicesConfig.defaultModel ?? "");
   }, [servicesConfig]);
+
+  // Task routes state
+  const [taskRoutes, setTaskRoutes] = useState<Record<string, { service: string; model: string }>>({});
+  const [savedTaskRoutes, setSavedTaskRoutes] = useState<Record<string, { service: string; model: string }>>({});
+  const [taskRoutesLoading, setTaskRoutesLoading] = useState(false);
+
+  useEffect(() => {
+    const loadRoutes = async () => {
+      setTaskRoutesLoading(true);
+      try {
+        const data = await fetchJson<{ routes: Record<string, { service: string; model: string }> }>("/project/routes");
+        const initial: Record<string, { service: string; model: string }> = {};
+        for (const route of TASK_ROUTES) {
+          const saved = data.routes?.[route.key];
+          initial[route.key] = saved ? { service: saved.service ?? "", model: saved.model ?? "" } : { service: "", model: "" };
+        }
+        setTaskRoutes(initial);
+        setSavedTaskRoutes(initial);
+      } catch { /* use defaults */ }
+      setTaskRoutesLoading(false);
+    };
+    void loadRoutes();
+  }, []);
+
+  const updateTaskRoute = (routeKey: string, patch: { service?: string; model?: string }) => {
+    setTaskRoutes((prev) => ({
+      ...prev,
+      [routeKey]: { ...prev[routeKey], ...patch },
+    }));
+  };
+
+  const taskRoutesChanged = TASK_ROUTES.some(
+    (r) => taskRoutes[r.key]?.service !== (savedTaskRoutes[r.key]?.service ?? "")
+      || taskRoutes[r.key]?.model !== (savedTaskRoutes[r.key]?.model ?? ""),
+  );
 
   useEffect(() => {
     void fetchServices();
@@ -142,6 +182,17 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
         service: defaultService || undefined,
         defaultModel: defaultModel || undefined,
       });
+
+      // Save task routes
+      const routesPayload: Record<string, { service: string; model: string }> = {};
+      for (const route of TASK_ROUTES) {
+        const r = taskRoutes[route.key];
+        if (r?.service && r?.model) {
+          routesPayload[route.key] = { service: r.service, model: r.model };
+        }
+      }
+      await putApi("/project/routes", { routes: routesPayload });
+      setSavedTaskRoutes(taskRoutes);
 
       // Save agent overrides
       const overrides: Record<string, unknown> = {};
@@ -280,6 +331,75 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
           </div>
         )}
       </div>
+
+      {/* Task routes card */}
+      {taskRoutesLoading ? (
+        <div className="rounded-lg border border-border/30 bg-card/50 p-4 space-y-3">
+          <div className="flex items-center justify-center py-4 text-sm text-muted-foreground">
+            <Loader2 size={16} className="mr-2 animate-spin" />
+            加载中...
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border/30 bg-card/50 p-4 space-y-4">
+          <div className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
+            任务路由
+          </div>
+          {TASK_ROUTES.map((route) => {
+            const r = taskRoutes[route.key]!;
+            const models = r.service ? (modelsByService[r.service] ?? []) : [];
+            return (
+              <div key={route.key} className="space-y-2 pt-3 border-t border-border/20 first:pt-2 first:border-t-0">
+                <div className="text-sm font-medium">{route.label}</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Select
+                    value={r.service}
+                    onValueChange={(v) => {
+                      updateTaskRoute(route.key, { service: v ?? "", model: "" });
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={t("config.selectService")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {connectedServices.map((svc) => (
+                        <SelectItem key={svc.service} value={svc.service}>
+                          {svc.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={r.model}
+                    onValueChange={(v) => updateTaskRoute(route.key, { model: v ?? "" })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={t("config.selectModel")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {models.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">
+                          {r.service ? "加载中..." : "先选择服务"}
+                        </div>
+                      )}
+                      {models.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.name || m.id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {r.model && (
+                  <div className="text-xs text-muted-foreground/60 font-mono">
+                    {r.service} / {r.model}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Smart routing panel */}
       {showSmartRouting && (
@@ -488,7 +608,7 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || (!hasAgentOverride && !defaultModelChanged)}
+            disabled={saving || (!hasAgentOverride && !defaultModelChanged && !taskRoutesChanged)}
             className="inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? (
