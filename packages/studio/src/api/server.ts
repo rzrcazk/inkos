@@ -29,6 +29,9 @@ import {
   resolveServiceModel,
   loadSecrets,
   saveSecrets,
+  loadGlobalSecrets,
+  saveGlobalSecrets,
+  getServiceApiKey,
   listModelsForService,
   isApiKeyOptionalForEndpoint,
   getAllEndpoints,
@@ -37,7 +40,6 @@ import {
   fetchWithProxy,
   chatCompletion,
   buildExportArtifact,
-  GLOBAL_ENV_PATH,
   type ResolvedModel,
   type PipelineConfig,
   type ProjectConfig,
@@ -246,6 +248,7 @@ interface ServiceConfigEntry {
   apiFormat?: "chat" | "responses" | "anthropic";
   stream?: boolean;
   selectedModels?: string[];
+  enabled?: boolean;
 }
 
 type LLMConfigSource = "env" | "studio";
@@ -335,6 +338,8 @@ function serviceConfigKey(entry: ServiceConfigEntry): string {
 }
 
 function normalizeServiceEntry(serviceId: string, value: Record<string, unknown>): ServiceConfigEntry {
+  const enabledField = typeof value.enabled === "boolean" ? { enabled: value.enabled } : {};
+
   if (serviceId.startsWith("custom:")) {
     return {
       service: "custom",
@@ -344,6 +349,7 @@ function normalizeServiceEntry(serviceId: string, value: Record<string, unknown>
       ...(value.apiFormat === "chat" || value.apiFormat === "responses" || value.apiFormat === "anthropic" ? { apiFormat: value.apiFormat } : {}),
       ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
       ...(Array.isArray(value.selectedModels) ? { selectedModels: value.selectedModels.filter((m): m is string => typeof m === "string") } : {}),
+      ...enabledField,
     };
   }
 
@@ -356,6 +362,7 @@ function normalizeServiceEntry(serviceId: string, value: Record<string, unknown>
       ...(value.apiFormat === "chat" || value.apiFormat === "responses" || value.apiFormat === "anthropic" ? { apiFormat: value.apiFormat } : {}),
       ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
       ...(Array.isArray(value.selectedModels) ? { selectedModels: value.selectedModels.filter((m): m is string => typeof m === "string") } : {}),
+      ...enabledField,
     };
   }
 
@@ -366,6 +373,7 @@ function normalizeServiceEntry(serviceId: string, value: Record<string, unknown>
     ...(value.apiFormat === "chat" || value.apiFormat === "responses" || value.apiFormat === "anthropic" ? { apiFormat: value.apiFormat } : {}),
     ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
     ...(Array.isArray(value.selectedModels) ? { selectedModels: value.selectedModels.filter((m): m is string => typeof m === "string") } : {}),
+    ...enabledField,
   };
 }
 
@@ -385,6 +393,7 @@ function normalizeServiceConfig(raw: unknown): ServiceConfigEntry[] {
         ...(entry.apiFormat === "chat" || entry.apiFormat === "responses" || entry.apiFormat === "anthropic" ? { apiFormat: entry.apiFormat } : {}),
         ...(typeof entry.stream === "boolean" ? { stream: entry.stream } : {}),
         ...(Array.isArray(entry.selectedModels) ? { selectedModels: entry.selectedModels.filter((m): m is string => typeof m === "string") } : {}),
+        ...(typeof entry.enabled === "boolean" ? { enabled: entry.enabled } : {}),
       }));
   }
 
@@ -415,32 +424,40 @@ async function saveRawConfig(root: string, config: Record<string, unknown>): Pro
   await writeFile(join(root, "inkos.json"), JSON.stringify(config, null, 2), "utf-8");
 }
 
-async function readEnvConfigSummary(path: string): Promise<EnvConfigSummary> {
+async function readSecretsConfigSummary(projectRoot: string): Promise<EnvConfigSummary> {
   try {
-    const raw = await readFile(path, "utf-8");
-    const values = new Map<string, string>();
-
-    for (const line of raw.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
-      if (!match) continue;
-      const [, key, value] = match;
-      values.set(key, value.trim());
-    }
-
-    const provider = values.get("INKOS_LLM_PROVIDER") ?? null;
-    const baseUrl = values.get("INKOS_LLM_BASE_URL") ?? null;
-    const model = values.get("INKOS_LLM_MODEL") ?? null;
-    const apiKey = values.get("INKOS_LLM_API_KEY") ?? "";
-    const detected = Boolean(provider || baseUrl || model || apiKey);
-
+    const secrets = await loadSecrets(projectRoot);
+    const serviceKeys = Object.keys(secrets.services);
+    const detected = serviceKeys.length > 0;
     return {
       detected,
-      provider,
-      baseUrl,
-      model,
-      hasApiKey: apiKey.length > 0,
+      provider: detected ? serviceKeys[0] ?? null : null,
+      baseUrl: null,
+      model: null,
+      hasApiKey: serviceKeys.some((k) => secrets.services[k]?.apiKey),
+    };
+  } catch {
+    return {
+      detected: false,
+      provider: null,
+      baseUrl: null,
+      model: null,
+      hasApiKey: false,
+    };
+  }
+}
+
+async function readGlobalSecretsConfigSummary(): Promise<EnvConfigSummary> {
+  try {
+    const secrets = await loadGlobalSecrets();
+    const serviceKeys = Object.keys(secrets.services);
+    const detected = serviceKeys.length > 0;
+    return {
+      detected,
+      provider: detected ? serviceKeys[0] ?? null : null,
+      baseUrl: null,
+      model: null,
+      hasApiKey: serviceKeys.some((k) => secrets.services[k]?.apiKey),
     };
   } catch {
     return {
@@ -454,8 +471,8 @@ async function readEnvConfigSummary(path: string): Promise<EnvConfigSummary> {
 }
 
 async function readEnvConfigStatus(root: string): Promise<EnvConfigStatus> {
-  const project = await readEnvConfigSummary(join(root, ".env"));
-  const global = await readEnvConfigSummary(GLOBAL_ENV_PATH);
+  const project = await readSecretsConfigSummary(root);
+  const global = await readGlobalSecretsConfigSummary();
   return {
     project,
     global,
@@ -1273,6 +1290,14 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const secrets = await loadSecrets(root);
     const endpoints = getAllEndpoints().filter((ep) => ep.id !== "custom");
 
+    // Load enabled states from inkos.json config
+    let configuredServices: ServiceConfigEntry[] = [];
+    try {
+      const config = await loadRawConfig(root);
+      configuredServices = normalizeServiceConfig((config.llm as Record<string, unknown> | undefined)?.services);
+    } catch { /* no config */ }
+    const enabledMap = new Map(configuredServices.map((s) => [s.service === "custom" ? `custom:${s.name ?? "Custom"}` : s.service, s.enabled]));
+
     // Fast: only check connection status from secrets, no external API calls.
     const services = endpoints.map((ep) => ({
       service: ep.id,
@@ -1281,6 +1306,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       connected: Boolean(secrets.services[ep.id]?.apiKey),
       baseUrl: ep.baseUrl,
       api: ep.api,
+      enabled: enabledMap.has(ep.id) ? enabledMap.get(ep.id) !== false : true,
     }));
 
     // Add custom services from inkos.json
@@ -1296,6 +1322,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
             connected: Boolean(secrets.services[secretKey]?.apiKey),
             baseUrl: svc.baseUrl ?? "",
             api: svc.apiFormat === "anthropic" ? "anthropic-messages" : svc.apiFormat === "responses" ? "openai-responses" : "openai-completions",
+            enabled: svc.enabled !== false,
           });
         }
       }
@@ -1438,6 +1465,28 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     });
   });
 
+  app.put("/api/v1/services/:service/enabled", async (c) => {
+    const service = c.req.param("service");
+    const { enabled } = await c.req.json<{ enabled: boolean }>();
+    const config = await loadRawConfig(root);
+    const llm = (config.llm ?? {}) as Record<string, unknown>;
+    const existing = normalizeServiceConfig(llm.services);
+    const key = service.startsWith("custom:") ? "custom" : service;
+    const name = service.startsWith("custom:") ? decodeURIComponent(service.slice("custom:".length)) : undefined;
+    const idx = existing.findIndex((s) =>
+      s.service === key && (key !== "custom" || s.name === name),
+    );
+    if (idx >= 0) {
+      existing[idx] = { ...existing[idx], enabled };
+    } else {
+      existing.push({ service: key, ...(name ? { name } : {}), enabled });
+    }
+    llm.services = existing;
+    config.llm = llm;
+    await saveRawConfig(root, config);
+    return c.json({ ok: true });
+  });
+
   app.get("/api/v1/services/:service/models/bank", async (c) => {
     const service = c.req.param("service");
     const endpoint = getAllEndpoints().find((ep) => ep.id === service);
@@ -1542,16 +1591,19 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         id: `custom:${s.name ?? "Custom"}`,
         baseUrl: s.baseUrl ?? "",
         label: s.name ?? "Custom",
+        selectedModels: s.selectedModels ?? [],
       }))
       .filter((s) => s.baseUrl && Boolean(secrets.services[s.id]?.apiKey));
 
-    const groups = await Promise.all(customs.map(async (s) => ({
-      service: s.id,
-      label: s.label,
-      models: filterTextChatModels(
+    const groups = await Promise.all(customs.map(async (s) => {
+      if (s.selectedModels.length > 0) {
+        return { service: s.id, label: s.label, models: s.selectedModels.map((id) => ({ id, name: id })) };
+      }
+      const models = filterTextChatModels(
         await probeModelsFromUpstream(s.baseUrl, secrets.services[s.id].apiKey, 10_000),
-      ),
-    })));
+      );
+      return { service: s.id, label: s.label, models };
+    }));
 
     return c.json({ groups });
   });
@@ -3045,7 +3097,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   // --- Radar Scan ---
 
   app.post("/api/v1/radar/scan", async (c) => {
-    const body = await c.req.json<{ service?: string; model?: string }>().catch(() => ({}));
+    const body = await c.req.json<{ service?: string; model?: string }>().catch(() => ({}) as { service?: string; model?: string });
     const currentConfig = await loadCurrentProjectConfig();
     broadcast("radar:start", {});
     try {
@@ -3076,6 +3128,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
           apiKey,
           apiFormat: endpoint?.transportDefaults?.apiFormat ?? (preset?.api.startsWith("openai-responses") ? "responses" : "chat"),
           stream: endpoint?.transportDefaults?.stream ?? true,
+          temperature: 0.7,
+          configSource: "studio",
+          thinkingBudget: 0,
         };
         // Clear modelOverrides so PipelineRunner.resolveOverride("radar")
         // falls through to the pipeline-level client/model instead of a
@@ -3104,12 +3159,11 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
   app.get("/api/v1/doctor", async (c) => {
     const { existsSync } = await import("node:fs");
-    const { GLOBAL_ENV_PATH } = await import("@actalk/inkos-core");
 
     const checks = {
       inkosJson: existsSync(join(root, "inkos.json")),
-      projectEnv: existsSync(join(root, ".env")),
-      globalEnv: existsSync(GLOBAL_ENV_PATH),
+      projectSecrets: existsSync(join(root, ".inkos", "secrets.json")),
+      globalSecrets: existsSync(join(process.env.HOME ?? "", ".inkos", "secrets.json")),
       booksDir: existsSync(join(root, "books")),
       llmConnected: false,
       bookCount: 0,
