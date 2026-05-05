@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { BookCreationDraft } from "@actalk/inkos-core";
 import { BookPlus, CheckCircle2, RotateCcw, Sparkles } from "lucide-react";
 import { fetchJson, useApi } from "../hooks/use-api";
@@ -463,6 +463,22 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [bookCreateSessionId, setBookCreateSessionIdState] = useState<string | null>(null);
+
+  const bookSessionIdRef = useRef<string | null>(null);
+
+  const ensureBookSession = async (): Promise<string> => {
+    if (bookSessionIdRef.current) {
+      return bookSessionIdRef.current;
+    }
+    const newSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await fetchJson<unknown>("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: newSessionId, bookId: null }),
+    });
+    bookSessionIdRef.current = newSessionId;
+    return newSessionId;
+  };
 
   const summaryRows = useMemo(
     () => (draft ? buildCreationDraftSummary(draft, projectLang) : []),
