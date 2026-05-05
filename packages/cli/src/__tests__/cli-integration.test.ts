@@ -105,14 +105,10 @@ describe("CLI integration", () => {
       expect(config.notify).toEqual([]);
     });
 
-    it("creates .env file", async () => {
-      const envContent = await readFile(join(projectDir, ".env"), "utf-8");
-      expect(envContent).toContain("INKOS_LLM_API_KEY");
-    });
-
-    it("creates .gitignore", async () => {
+    it("creates .gitignore with standard entries", async () => {
       const gitignore = await readFile(join(projectDir, ".gitignore"), "utf-8");
-      expect(gitignore).toContain(".env");
+      expect(gitignore).toContain("node_modules/");
+      expect(gitignore).toContain(".DS_Store");
     });
 
     it("creates Node version hints for sqlite-backed memory features", async () => {
@@ -199,9 +195,12 @@ describe("CLI integration", () => {
   });
 
   describe("inkos config show", () => {
-    it("shows current config as JSON", () => {
+    it("shows current config including secrets", () => {
       const output = run(["config", "show"]);
-      const config = JSON.parse(output);
+      // Output now has "inkos.json:" and "secrets.json:" sections
+      expect(output).toContain("inkos.json:");
+      const jsonBlock = output.split("inkos.json:\n")[1]?.split("\nsecrets.json:")[0];
+      const config = JSON.parse(jsonBlock ?? "{}");
       expect(config.llm.model).toBe("gpt-5");
     });
   });
@@ -210,63 +209,42 @@ describe("CLI integration", () => {
     it("returns structured JSON for shared interaction mode switches", async () => {
       const initialized = await stat(join(projectDir, "inkos.json")).then(() => true).catch(() => false);
       if (!initialized) run(["init"]);
-      const envPath = join(projectDir, ".env");
-      const originalEnv = await readFile(envPath, "utf-8");
-      try {
-        await writeFile(
-          envPath,
-          Object.entries(failingLlmEnv).map(([key, value]) => `${key}=${value}`).join("\n"),
-          "utf-8",
-        );
-        const output = run(["interact", "--json", "--message", "切换到全自动"]);
-        const data = JSON.parse(output);
+      const output = run(["interact", "--json", "--message", "切换到全自动"]);
+      const data = JSON.parse(output);
 
-        expect(data.request.intent).toBe("switch_mode");
-        expect(data.request.mode).toBe("auto");
-        expect(data.session.automationMode).toBe("auto");
-      } finally {
-        await writeFile(envPath, originalEnv, "utf-8");
-      }
+      expect(data.request.intent).toBe("switch_mode");
+      expect(data.request.mode).toBe("auto");
+      expect(data.session.automationMode).toBe("auto");
     });
 
     it("binds the requested book when interact is called with --book", async () => {
       const initialized = await stat(join(projectDir, "inkos.json")).then(() => true).catch(() => false);
       if (!initialized) run(["init"]);
-      const envPath = join(projectDir, ".env");
-      const originalEnv = await readFile(envPath, "utf-8");
-      try {
-        await writeFile(
-          envPath,
-          Object.entries(failingLlmEnv).map(([key, value]) => `${key}=${value}`).join("\n"),
-          "utf-8",
-        );
-        const state = new StateManager(projectDir);
-        await state.saveBookConfig("harbor", {
-          id: "harbor",
-          title: "Harbor",
-          platform: "tomato",
-          genre: "other",
-          status: "active",
-          targetChapters: 20,
-          chapterWordCount: 3000,
-          createdAt: "2026-04-07T00:00:00.000Z",
-          updatedAt: "2026-04-07T00:00:00.000Z",
-        });
+      const state = new StateManager(projectDir);
+      await state.saveBookConfig("harbor", {
+        id: "harbor",
+        title: "Harbor",
+        platform: "tomato",
+        genre: "other",
+        status: "active",
+        targetChapters: 20,
+        chapterWordCount: 3000,
+        createdAt: "2026-04-07T00:00:00.000Z",
+        updatedAt: "2026-04-07T00:00:00.000Z",
+      });
 
-        const output = run(["interact", "--json", "--book", "harbor", "--message", "/books"]);
-        const data = JSON.parse(output);
+      const output = run(["interact", "--json", "--book", "harbor", "--message", "/books"]);
+      const data = JSON.parse(output);
 
-        expect(data.session.activeBookId).toBe("harbor");
-      } finally {
-        await writeFile(envPath, originalEnv, "utf-8");
-        await rm(join(projectDir, "books", "harbor"), { recursive: true, force: true });
-        await rm(join(projectDir, ".inkos-session.json"), { force: true }).catch(() => {});
-      }
+      expect(data.session.activeBookId).toBe("harbor");
+
+      await rm(join(projectDir, "books", "harbor"), { recursive: true, force: true });
+      await rm(join(projectDir, ".inkos-session.json"), { force: true }).catch(() => {});
     });
   });
 
   describe("inkos config set-model", () => {
-    it("rejects raw API keys passed to --api-key-env", async () => {
+    it("no longer supports --api-key-env since env-based config has been removed", async () => {
       const { exitCode, stderr } = runStderr([
         "config",
         "set-model",
@@ -277,11 +255,11 @@ describe("CLI integration", () => {
         "--base-url",
         "https://poloai.top/v1",
         "--api-key-env",
-        "sk-test-direct-key",
+        "INKOS_API_KEY",
       ]);
 
       expect(exitCode).not.toBe(0);
-      expect(stderr).toContain("--api-key-env expects an environment variable name");
+      expect(stderr).toContain("unknown option");
 
       const raw = await readFile(join(projectDir, "inkos.json"), "utf-8");
       const config = JSON.parse(raw);
@@ -573,33 +551,30 @@ describe("CLI integration", () => {
         run(["init"]);
       });
       const configPath = join(projectDir, "inkos.json");
-      const envPath = join(projectDir, ".env");
       const originalConfig = await readFile(configPath, "utf-8");
-      const originalEnv = await readFile(envPath, "utf-8");
 
       try {
         const config = JSON.parse(originalConfig);
-        config.llm.provider = "openai";
-        config.llm.baseUrl = "http://127.0.0.1:11434/v1";
-        config.llm.model = "gpt-oss:20b";
+        config.llm = {
+          configSource: "studio",
+          services: [
+            { service: "ollama", provider: "openai", baseUrl: "http://127.0.0.1:11434/v1" },
+          ],
+          defaultModel: "gpt-oss:20b",
+        };
         await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
-        await writeFile(envPath, [
-          "INKOS_LLM_PROVIDER=openai",
-          "INKOS_LLM_BASE_URL=http://127.0.0.1:11434/v1",
-          "INKOS_LLM_MODEL=gpt-oss:20b",
-          "",
-        ].join("\n"), "utf-8");
+        await mkdir(join(projectDir, ".inkos"), { recursive: true });
+        await writeFile(join(projectDir, ".inkos", "secrets.json"), JSON.stringify({
+          services: { ollama: { apiKey: "" } },
+        }, null, 2), "utf-8");
 
-        const { stdout } = runStderr(["doctor"], {
-          env: { INKOS_LLM_API_KEY: "" },
-        });
+        const { stdout } = runStderr(["doctor"]);
         expect(stdout).toContain("LLM API Key");
         expect(stdout).toContain("Optional for local/self-hosted endpoint");
         expect(stdout).toContain("LLM Config");
         expect(stdout).not.toContain("No LLM config available");
       } finally {
         await writeFile(configPath, originalConfig, "utf-8");
-        await writeFile(envPath, originalEnv, "utf-8");
       }
     });
 

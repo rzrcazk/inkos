@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Plus, Search, X } from "lucide-react";
+import { fetchJson } from "../hooks/use-api";
 import { GROUP_LABELS, GROUP_ORDER, GROUP_SHORT_LABELS } from "../constants/service-groups";
 import { useServiceStore } from "../store/service";
 import type { EndpointGroup, ServiceInfo } from "../store/service";
@@ -21,25 +22,54 @@ function SkeletonCard() {
   );
 }
 
-function ServiceCard({ svc, onClick }: { svc: ServiceInfo; onClick: () => void }) {
+function ServiceCard({
+  svc,
+  onClick,
+  onToggleEnabled,
+}: {
+  svc: ServiceInfo;
+  onClick: () => void;
+  onToggleEnabled: (enabled: boolean) => void;
+}) {
+  const isDisabled = svc.enabled === false;
   return (
-    <button
-      onClick={onClick}
+    <div
       className={[
-        "flex min-h-[92px] flex-col gap-2 rounded-lg border p-5 text-left transition-all hover:shadow-sm",
-        svc.connected
-          ? "border-emerald-500/30 bg-emerald-500/[0.03]"
-          : "border-dashed border-border/40",
+        "flex min-h-[92px] flex-col gap-2 rounded-lg border p-5 transition-all",
+        isDisabled
+          ? "border-border/30 opacity-50"
+          : svc.connected
+            ? "border-emerald-500/30 bg-emerald-500/[0.03] hover:shadow-sm"
+            : "border-dashed border-border/40 hover:shadow-sm",
       ].join(" ")}
     >
       <div className="flex items-center justify-between gap-3">
-        <span className="truncate text-sm font-medium">{svc.label}</span>
-        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${svc.connected ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
+        <button onClick={onClick} className="truncate text-sm font-medium text-left flex-1">
+          {svc.label}
+        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            title={isDisabled ? "启用此服务商" : "禁用此服务商"}
+            onClick={(e) => { e.stopPropagation(); onToggleEnabled(!isDisabled); }}
+            className={[
+              "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+              isDisabled ? "bg-muted-foreground/20" : "bg-primary/70",
+            ].join(" ")}
+          >
+            <span className={[
+              "pointer-events-none inline-block h-3 w-3 rounded-full bg-background shadow-sm transition-transform",
+              isDisabled ? "translate-x-0" : "translate-x-3",
+            ].join(" ")} />
+          </button>
+          {!isDisabled && (
+            <span className={`h-1.5 w-1.5 rounded-full ${svc.connected ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
+          )}
+        </div>
       </div>
-      <span className="text-xs text-muted-foreground/60">
-        {svc.connected ? "已连接" : "未配置"}
-      </span>
-    </button>
+      <button onClick={onClick} className="text-xs text-muted-foreground/60 text-left">
+        {isDisabled ? "已禁用" : svc.connected ? "已连接" : "未配置"}
+      </button>
+    </div>
   );
 }
 
@@ -47,6 +77,16 @@ export function ServiceListPage({ nav }: { nav: Nav }) {
   const services = useServiceStore((s) => s.services);
   const loading = useServiceStore((s) => s.servicesLoading);
   const fetchServices = useServiceStore((s) => s.fetchServices);
+  const refreshServices = useServiceStore((s) => s.refreshServices);
+
+  const handleToggleEnabled = async (serviceId: string, enabled: boolean) => {
+    await fetchJson(`/services/${encodeURIComponent(serviceId)}/enabled`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    void refreshServices();
+  };
 
   useEffect(() => { void fetchServices(); }, [fetchServices]);
 
@@ -223,6 +263,7 @@ export function ServiceListPage({ nav }: { nav: Nav }) {
                   key={svc.service}
                   svc={svc}
                   onClick={() => nav.toServiceDetail(svc.service)}
+                  onToggleEnabled={(enabled) => void handleToggleEnabled(svc.service, enabled)}
                 />
               ))}
             </div>
@@ -241,6 +282,7 @@ export function ServiceListPage({ nav }: { nav: Nav }) {
                 key={svc.service}
                 svc={svc}
                 onClick={() => nav.toServiceDetail(svc.service)}
+                onToggleEnabled={(enabled) => void handleToggleEnabled(svc.service, enabled)}
               />
             ))}
             {canCreateCustom && (

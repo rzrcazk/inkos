@@ -1,6 +1,7 @@
 import type { LLMClient, LLMMessage, LLMResponse, OnStreamProgress } from "../llm/provider.js";
 import { chatCompletion } from "../llm/provider.js";
 import { searchWeb, fetchUrl } from "../utils/web-search.js";
+import { getServiceApiKey } from "../llm/secrets.js";
 import type { Logger } from "../utils/logger.js";
 
 export interface AgentContext {
@@ -36,7 +37,7 @@ export abstract class BaseAgent {
   /**
    * Chat with web search enabled.
    * OpenAI: uses native web_search_options / web_search_preview.
-   * Other providers: searches via Tavily API (TAVILY_API_KEY), injects results into prompt.
+   * Other providers: searches via Tavily API (key from secrets.json), injects results into prompt.
    */
   protected async chatWithSearch(
     messages: ReadonlyArray<LLMMessage>,
@@ -62,7 +63,8 @@ export abstract class BaseAgent {
       const query = lastUserMsg.content.slice(0, 200);
       this.log?.info(`[search] Searching: ${query.slice(0, 60)}...`);
 
-      const results = await searchWeb(query, 3);
+      const tavilyKey = await getServiceApiKey(this.ctx.projectRoot, "tavily");
+      const results = await searchWeb(query, 3, tavilyKey ?? "");
       if (results.length === 0) {
         this.log?.warn("[search] No results found, falling back to regular chat");
         return this.chat(messages, options);

@@ -233,11 +233,12 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
     loadSecrets: loadSecretsMock,
     saveSecrets: saveSecretsMock,
     getServiceApiKey: getServiceApiKeyMock,
+    loadGlobalSecrets: vi.fn(() => Promise.resolve({ services: {} })),
+    saveGlobalSecrets: vi.fn(() => Promise.resolve()),
     listModelsForService: listModelsForServiceMock,
     getAllEndpoints: getAllEndpointsMock,
     probeModelsFromUpstream: probeModelsFromUpstreamMock,
     fetchWithProxy: vi.fn((input: Parameters<typeof fetch>[0], init?: RequestInit) => fetch(input, init)),
-    GLOBAL_ENV_PATH: join(tmpdir(), "inkos-global.env"),
   };
 });
 
@@ -951,18 +952,13 @@ describe("createStudioServer daemon lifecycle", () => {
   });
 
   it("reports config source and detected env overrides for Studio switching", async () => {
-    await writeFile(join(root, ".env"), [
-      "INKOS_LLM_PROVIDER=openai",
-      "INKOS_LLM_BASE_URL=https://project.example.com/v1",
-      "INKOS_LLM_MODEL=gpt-5.4",
-      "INKOS_LLM_API_KEY=sk-project",
-    ].join("\n"), "utf-8");
-    await writeFile(join(tmpdir(), "inkos-global.env"), [
-      "INKOS_LLM_PROVIDER=openai",
-      "INKOS_LLM_BASE_URL=https://global.example.com/v1",
-      "INKOS_LLM_MODEL=gpt-4o",
-      "INKOS_LLM_API_KEY=sk-global",
-    ].join("\n"), "utf-8");
+    loadSecretsMock.mockResolvedValue({
+      services: { google: { apiKey: "sk-project" } },
+    });
+    const loadGlobalSecrets = (await import("@actalk/inkos-core")).loadGlobalSecrets;
+    (loadGlobalSecrets as ReturnType<typeof vi.fn>).mockReturnValue({
+      services: { moonshot: { apiKey: "sk-global" } },
+    });
     await writeFile(join(root, "inkos.json"), JSON.stringify({
       ...projectConfig,
       llm: {
@@ -984,14 +980,12 @@ describe("createStudioServer daemon lifecycle", () => {
         runtimeUsesEnv: false,
         project: {
           detected: true,
-          baseUrl: "https://project.example.com/v1",
-          model: "gpt-5.4",
+          provider: "google",
           hasApiKey: true,
         },
         global: {
           detected: true,
-          baseUrl: "https://global.example.com/v1",
-          model: "gpt-4o",
+          provider: "moonshot",
           hasApiKey: true,
         },
       },
@@ -1119,20 +1113,21 @@ describe("createStudioServer daemon lifecycle", () => {
   });
 
   it("auto-detects a working custom combination when /models is unavailable", async () => {
+    await mkdir(join(root, ".inkos"), { recursive: true });
+    await writeFile(join(root, ".inkos", "secrets.json"), JSON.stringify({
+      services: { "custom:MiniMax": { apiKey: "sk-minimax" } },
+    }), "utf-8");
     await writeFile(join(root, "inkos.json"), JSON.stringify({
       ...projectConfig,
       llm: {
         configSource: "env",
+        service: "custom:MiniMax",
+        defaultModel: "MiniMax-M2.7",
         services: [
           { service: "custom", name: "MiniMax", baseUrl: "https://api.minimax.com/v1" },
         ],
       },
     }, null, 2), "utf-8");
-    await writeFile(join(root, ".env"), [
-      "INKOS_LLM_MODEL=MiniMax-M2.7",
-      "INKOS_LLM_BASE_URL=https://api.minimax.com/v1",
-      "INKOS_LLM_API_KEY=sk-minimax",
-    ].join("\n"), "utf-8");
 
     createLLMClientMock.mockImplementation(((cfg: unknown) => cfg) as any);
     chatCompletionMock.mockImplementation(async (client: any) => {

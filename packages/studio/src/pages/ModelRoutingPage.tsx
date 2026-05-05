@@ -109,16 +109,18 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
   }, [overridesData, overridesLoading]);
 
   const connectedServices = useMemo(
-    () => services.filter((s) => s.connected),
+    () => services.filter((s) => s.connected && s.enabled !== false),
     [services],
   );
 
-  // Live-probe models for connected services whose bank is empty (e.g. newapi, ollama)
+  // Live-probe models for connected services whose bank has no entry yet (e.g. newapi, ollama).
+  // Intentionally checks key existence, not length, to avoid re-fetching when the probe
+  // returned an empty list (e.g. no selectedModels configured).
   useEffect(() => {
     if (bankModelsLoading) return;
     for (const svc of connectedServices) {
       if (svc.service.startsWith("custom")) continue;
-      if (!modelsByService[svc.service] || modelsByService[svc.service]!.length === 0) {
+      if (!(svc.service in modelsByService)) {
         void fetchLiveModels(svc.service);
       }
     }

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { loadSecrets, saveSecrets, getServiceApiKey } from "../llm/secrets.js";
+import { loadSecrets, saveSecrets, getServiceApiKey, loadGlobalSecrets, saveGlobalSecrets } from "../llm/secrets.js";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 
 describe("secrets", () => {
   let root: string;
@@ -68,16 +68,23 @@ describe("secrets", () => {
       expect(key).toBe("sk-from-file");
     });
 
-    it("falls back to environment variable", async () => {
-      vi.stubEnv("MOONSHOT_API_KEY", "sk-from-env");
-      const key = await getServiceApiKey(root, "moonshot");
-      expect(key).toBe("sk-from-env");
-      vi.unstubAllEnvs();
-    });
-
     it("returns null when neither secrets nor env exists", async () => {
       const key = await getServiceApiKey(root, "moonshot");
       expect(key).toBeNull();
+    });
+
+    it("falls back to global secrets when project secrets don't have the service", async () => {
+      // Write global secrets
+      const globalPath = join(homedir(), ".inkos", "secrets.json");
+      try {
+        await mkdir(join(homedir(), ".inkos"), { recursive: true });
+        await writeFile(globalPath, JSON.stringify({ services: { moonshot: { apiKey: "sk-global" } } }));
+        const key = await getServiceApiKey(root, "moonshot");
+        expect(key).toBe("sk-global");
+      } finally {
+        // Cleanup
+        try { await rm(globalPath, { force: true }); } catch { /* ignore */ }
+      }
     });
 
     it("handles custom service with colon key format", async () => {

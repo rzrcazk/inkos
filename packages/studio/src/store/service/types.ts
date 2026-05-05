@@ -12,6 +12,7 @@ export interface ServiceInfo {
   readonly connected: boolean;
   readonly baseUrl?: string;
   readonly api?: string;
+  readonly enabled: boolean;
 }
 
 export interface ModelInfo {
@@ -35,6 +36,7 @@ export interface ServiceStore {
 
   modelsByService: Record<string, ReadonlyArray<ModelInfo>>;
   bankModelsLoading: boolean;
+  bankModelsLoaded: boolean;
   customModelsLoading: boolean;
   liveModelsLoading: Record<string, boolean>;
 

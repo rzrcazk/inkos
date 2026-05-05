@@ -14,6 +14,7 @@ export const useServiceStore = create<ServiceStore>()((set, get) => ({
 
   modelsByService: {},
   bankModelsLoading: false,
+  bankModelsLoaded: false,
   customModelsLoading: false,
   liveModelsLoading: {},
 
@@ -29,12 +30,12 @@ export const useServiceStore = create<ServiceStore>()((set, get) => ({
   },
 
   refreshServices: async () => {
-    set({ services: [], servicesLoading: false });
+    set({ services: [], servicesLoading: false, bankModelsLoaded: false });
     await get().fetchServices();
   },
 
   fetchBankModels: async () => {
-    if (get().bankModelsLoading) return;
+    if (get().bankModelsLoading || get().bankModelsLoaded) return;
     set({ bankModelsLoading: true });
     try {
       const data = await fetchJson<{ groups: ReadonlyArray<GroupPayload> }>("/services/models");
@@ -43,7 +44,7 @@ export const useServiceStore = create<ServiceStore>()((set, get) => ({
         for (const group of data.groups ?? []) {
           next[group.service] = group.models;
         }
-        return { modelsByService: next, bankModelsLoading: false };
+        return { modelsByService: next, bankModelsLoading: false, bankModelsLoaded: true };
       });
     } catch {
       set({ bankModelsLoading: false });
@@ -98,7 +99,7 @@ export const useServiceStore = create<ServiceStore>()((set, get) => ({
   getModelPickerStatus: () => {
     const { services, servicesLoading, bankModelsLoading, customModelsLoading, modelsByService } = get();
     if (servicesLoading) return "loading";
-    const connected = services.filter((s) => s.connected);
+    const connected = services.filter((s) => s.connected && s.enabled !== false);
     if (connected.length === 0) return "no-models";
     if (bankModelsLoading) return "loading";
     if (connected.some((s) => (modelsByService[s.service]?.length ?? 0) > 0)) return "ready";
@@ -112,7 +113,7 @@ export const useServiceStore = create<ServiceStore>()((set, get) => ({
   getGroupedModels: () => {
     const { services, modelsByService } = get();
     const groups: Array<{ service: string; label: string; models: ReadonlyArray<ModelInfo> }> = [];
-    for (const svc of services.filter((s) => s.connected)) {
+    for (const svc of services.filter((s) => s.connected && s.enabled !== false)) {
       const models = modelsByService[svc.service] ?? [];
       if (models.length > 0) {
         groups.push({ service: svc.service, label: svc.label, models });

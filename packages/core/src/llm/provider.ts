@@ -171,7 +171,7 @@ export function createLLMClient(config: LLMConfig): LLMClient {
 
   const piApi = resolvePiApi(serviceName, config.apiFormat, (inkosProvider?.api ?? preset?.api) as PiApi) as PiApi;
   const baseUrl = config.baseUrl || inkosProvider?.baseUrl || preset?.baseUrl || "";
-  const extraHeaders = config.headers ?? parseEnvHeaders();
+  const extraHeaders = config.headers;
   const compat = piApi === "openai-completions"
     ? resolveProviderCompat(inkosProvider, baseUrl)
     : undefined;
@@ -242,24 +242,6 @@ function resolveProviderCompat(
     ...(baseUrl.includes("generativelanguage.googleapis.com") ? { supportsStore: false } : {}),
   };
   return Object.keys(compat).length > 0 ? compat : undefined;
-}
-
-function parseEnvHeaders(): Record<string, string> | undefined {
-  const raw = process.env.INKOS_LLM_HEADERS;
-  if (!raw) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, string>;
-    }
-  } catch {
-    // not JSON — treat as single "Key: Value" pair
-    const idx = raw.indexOf(":");
-    if (idx > 0) {
-      return { [raw.slice(0, idx).trim()]: raw.slice(idx + 1).trim() };
-    }
-  }
-  return undefined;
 }
 
 // === Partial Response (stream interrupted but usable content received) ===
@@ -363,7 +345,7 @@ function wrapLLMError(error: unknown, context?: { readonly baseUrl?: string; rea
   }
   if (msg.includes("401")) {
     return new Error(
-      `API 返回 401 (未授权)。请检查 .env 中的 INKOS_LLM_API_KEY 是否正确。${ctxLine}`,
+      `API 返回 401 (未授权)。请检查服务配置中的 API Key 是否正确。${ctxLine}`,
     );
   }
   if (msg.includes("429")) {
@@ -387,7 +369,7 @@ function wrapLLMError(error: unknown, context?: { readonly baseUrl?: string; rea
       `  1. baseUrl 地址不正确（当前：${context?.baseUrl ?? "未知"}）\n` +
       `  2. 网络不通或被防火墙拦截\n` +
       `  3. API 服务暂时不可用\n` +
-      `  建议：检查 INKOS_LLM_BASE_URL 是否包含完整路径（如 /v1）`,
+      `  建议：检查服务配置中的 baseUrl 是否包含完整路径（如 /v1）`,
     );
   }
   // R4 Bug 2: 5xx "status code (no body)" — 尝试从 OpenAI SDK APIError 里抽 body 给用户看具体原因

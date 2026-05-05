@@ -77,7 +77,8 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
     isSafeBookId: actual.isSafeBookId,
     chatCompletion: chatCompletionMock,
     loadProjectConfig: loadProjectConfigMock,
-    GLOBAL_ENV_PATH: join(tmpdir(), "inkos-global.env"),
+    loadGlobalSecrets: vi.fn(() => Promise.resolve({ services: {} })),
+    saveGlobalSecrets: vi.fn(() => Promise.resolve()),
   };
 });
 

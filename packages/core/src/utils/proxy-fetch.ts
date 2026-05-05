@@ -1,18 +1,9 @@
 import { ProxyAgent } from "undici";
 
-type ProxyEnv = Record<string, string | undefined>;
 type FetchInitWithDispatcher = RequestInit & { dispatcher?: unknown };
 
-export function resolveProxyUrl(explicitProxyUrl?: string, env: ProxyEnv = process.env): string | undefined {
-  const candidate = [
-    explicitProxyUrl,
-    env.INKOS_LLM_PROXY_URL,
-    env.HTTPS_PROXY,
-    env.https_proxy,
-    env.HTTP_PROXY,
-    env.http_proxy,
-  ].find((value) => typeof value === "string" && value.trim().length > 0)?.trim();
-
+export function resolveProxyUrl(explicitProxyUrl?: string): string | undefined {
+  const candidate = explicitProxyUrl?.trim();
   if (!candidate) return undefined;
   const parsed = new URL(candidate);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -24,9 +15,8 @@ export function resolveProxyUrl(explicitProxyUrl?: string, env: ProxyEnv = proce
 export function buildProxyFetchInit(
   init: RequestInit = {},
   explicitProxyUrl?: string,
-  env: ProxyEnv = process.env,
 ): FetchInitWithDispatcher {
-  const proxyUrl = resolveProxyUrl(explicitProxyUrl, env);
+  const proxyUrl = resolveProxyUrl(explicitProxyUrl);
   if (!proxyUrl) return init;
   return {
     ...init,
@@ -38,7 +28,6 @@ export function fetchWithProxy(
   input: Parameters<typeof fetch>[0],
   init: RequestInit = {},
   explicitProxyUrl?: string,
-  env: ProxyEnv = process.env,
 ): ReturnType<typeof fetch> {
-  return fetch(input, buildProxyFetchInit(init, explicitProxyUrl, env));
+  return fetch(input, buildProxyFetchInit(init, explicitProxyUrl));
 }

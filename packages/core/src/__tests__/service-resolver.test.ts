@@ -129,12 +129,13 @@ describe("resolveServiceModel", () => {
     expect(result.apiKey).toBe("sk-deep");
   });
 
-  it("falls back to env var when no secrets file", async () => {
-    vi.stubEnv("DEEPSEEK_API_KEY", "sk-env");
+  it("uses global secrets when no project secrets file", async () => {
+    const { saveGlobalSecrets } = await import("../llm/secrets.js");
+    await saveGlobalSecrets({ services: { deepseek: { apiKey: "sk-global" } } });
 
     const result = await resolveServiceModel("deepseek", "deepseek-chat", root);
 
-    expect(result.apiKey).toBe("sk-env");
+    expect(result.apiKey).toBe("sk-global");
   });
 
   it("throws when no key found", async () => {

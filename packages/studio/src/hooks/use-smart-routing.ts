@@ -34,8 +34,10 @@ export function useSmartRouting(
     const tiers: TierRule[] = [
       {
         tierKey: "top",
-        modelMatch: (id) =>
-          id.includes("claude-opus") || id.includes("claude-sonnet"),
+        modelMatch: (id) => {
+          const lo = id.toLowerCase();
+          return lo.includes("claude") && (lo.includes("opus") || lo.includes("sonnet"));
+        },
         agentKeys: ["writer", "architect"],
       },
       {
@@ -72,7 +74,7 @@ export function useSmartRouting(
 
     // Build a lookup: for each connected service, get enabled text models.
     const available = connectedServices
-      .filter((s) => s.connected)
+      .filter((s) => s.connected && s.enabled !== false)
       .flatMap((svc) =>
         (modelsByService[svc.service] ?? []).map((m) => ({
           ...m,

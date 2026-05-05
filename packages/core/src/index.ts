@@ -236,7 +236,7 @@ export {
   type ModelInfo,
 } from "./llm/service-presets.js";
 export { resolveServiceModel, type ResolvedModel } from "./llm/service-resolver.js";
-export { loadSecrets, saveSecrets, getServiceApiKey, type SecretsFile } from "./llm/secrets.js";
+export { loadSecrets, saveSecrets, loadGlobalSecrets, saveGlobalSecrets, getServiceApiKey, type SecretsFile } from "./llm/secrets.js";
 export { migrateConfig, type MigrationResult } from "./llm/config-migration.js";
 export { getAllEndpoints, getEndpoint, type InkosEndpoint, type InkosModel, type EndpointGroup } from "./llm/providers/index.js";
 export { probeModelsFromUpstream, type ProbedModel } from "./llm/providers/probe.js";
@@ -280,9 +280,8 @@ export { loadRuntimeStateSnapshot, buildRuntimeStateArtifacts, saveRuntimeStateS
 export { splitChapters, type SplitChapter } from "./utils/chapter-splitter.js";
 export { countChapterLength, resolveLengthCountingMode, formatLengthCount, buildLengthSpec, isOutsideSoftRange, isOutsideHardRange, chooseNormalizeMode, type LengthLanguage } from "./utils/length-metrics.js";
 export { createLogger, createStderrSink, createJsonLineSink, nullSink, type Logger, type LogSink, type LogLevel, type LogEntry } from "./utils/logger.js";
-export { loadProjectConfig, GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH, isApiKeyOptionalForEndpoint } from "./utils/config-loader.js";
+export { loadProjectConfig, isApiKeyOptionalForEndpoint } from "./utils/config-loader.js";
 export { resolveEffectiveLLMConfig, type EffectiveLLMConfigResult, type EffectiveLLMDiagnostics, type LLMConfigCliOverrides, type LLMConfigMode, type LLMConsumer, type LLMValueSource } from "./utils/effective-llm-config.js";
-export { loadLLMEnvLayers, mergeEnvMaps, studioIgnoredEnv, cliOverlayEnv, legacyEnv, type LLMEnvLayers, type LLMEnvMap } from "./utils/llm-env.js";
 export { computeAnalytics, type AnalyticsData, type TokenStats } from "./utils/analytics.js";
 export {
   collectStaleHookDebt,

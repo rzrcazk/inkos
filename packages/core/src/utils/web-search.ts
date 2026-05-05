@@ -1,7 +1,7 @@
 /**
  * Web search + URL fetch utilities.
  *
- * searchWeb(): Tavily API search (requires TAVILY_API_KEY env var).
+ * searchWeb(): Tavily API search (requires explicit apiKey parameter).
  * fetchUrl(): Fetch a specific URL and return plain text.
  */
 
@@ -13,13 +13,12 @@ export interface SearchResult {
 
 /**
  * Search the web via Tavily API.
- * Requires TAVILY_API_KEY environment variable.
+ * Requires explicit apiKey parameter (stored in secrets.json).
  * Throws if key is not set — caller should catch and fall back to regular chat.
  */
-export async function searchWeb(query: string, maxResults = 5): Promise<ReadonlyArray<SearchResult>> {
-  const apiKey = process.env.TAVILY_API_KEY;
+export async function searchWeb(query: string, maxResults = 5, apiKey: string): Promise<ReadonlyArray<SearchResult>> {
   if (!apiKey) {
-    throw new Error("TAVILY_API_KEY not set. Set this env var to enable web search, or use OpenAI which has native search.");
+    throw new Error("Tavily API key not set. Add it to secrets.json under the 'tavily' service.");
   }
 
   const res = await fetch("https://api.tavily.com/search", {

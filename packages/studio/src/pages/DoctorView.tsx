@@ -6,8 +6,8 @@ import { Stethoscope, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 
 interface DoctorChecks {
   readonly inkosJson: boolean;
-  readonly projectEnv: boolean;
-  readonly globalEnv: boolean;
+  readonly projectSecrets: boolean;
+  readonly globalSecrets: boolean;
   readonly booksDir: boolean;
   readonly llmConnected: boolean;
   readonly bookCount: number;
@@ -58,8 +58,8 @@ export function DoctorView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
       ) : (
         <div className={`border ${c.cardStatic} rounded-lg p-5`}>
           <CheckRow label={t("doctor.inkosJson")} ok={data.inkosJson} />
-          <CheckRow label={t("doctor.projectEnv")} ok={data.projectEnv} />
-          <CheckRow label={t("doctor.globalEnv")} ok={data.globalEnv} />
+          <CheckRow label={t("doctor.projectSecrets")} ok={data.projectSecrets} />
+          <CheckRow label={t("doctor.globalSecrets")} ok={data.globalSecrets} />
           <CheckRow label={t("doctor.booksDir")} ok={data.booksDir} detail={`${data.bookCount} book(s)`} />
           <CheckRow label={t("doctor.llmApi")} ok={data.llmConnected} detail={data.llmConnected ? t("doctor.connected") : t("doctor.failed")} />
         </div>
@@ -67,11 +67,11 @@ export function DoctorView({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
 
       {data && (
         <div className={`px-4 py-3 rounded-lg text-sm font-medium ${
-          data.inkosJson && (data.projectEnv || data.globalEnv) && data.llmConnected
+          data.inkosJson && (data.projectSecrets || data.globalSecrets) && data.llmConnected
             ? "bg-emerald-500/10 text-emerald-600"
             : "bg-amber-500/10 text-amber-600"
         }`}>
-          {data.inkosJson && (data.projectEnv || data.globalEnv) && data.llmConnected
+          {data.inkosJson && (data.projectSecrets || data.globalSecrets) && data.llmConnected
             ? t("doctor.allPassed")
             : t("doctor.someFailed")
           }

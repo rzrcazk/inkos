@@ -307,12 +307,42 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
       </button>
 
       {/* Title + status */}
-      <div className="flex items-center gap-3">
-        <h1 className="font-serif text-2xl">{label}</h1>
-        {isConnected && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-medium">
-            已连接
-          </span>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="font-serif text-2xl">{label}</h1>
+          {isConnected && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-medium">
+              已连接
+            </span>
+          )}
+        </div>
+        {svc && (
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <span className="text-xs text-muted-foreground">
+              {svc.enabled !== false ? "已启用" : "已禁用"}
+            </span>
+            <button
+              title={svc.enabled !== false ? "禁用此服务商" : "启用此服务商"}
+              onClick={async () => {
+                const next = svc.enabled === false;
+                await fetchJson(`/services/${encodeURIComponent(serviceId)}/enabled`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ enabled: next }),
+                });
+                void refreshServices();
+              }}
+              className={[
+                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                svc.enabled !== false ? "bg-primary/70" : "bg-muted-foreground/20",
+              ].join(" ")}
+            >
+              <span className={[
+                "pointer-events-none inline-block h-4 w-4 rounded-full bg-background shadow-sm transition-transform",
+                svc.enabled !== false ? "translate-x-4" : "translate-x-0",
+              ].join(" ")} />
+            </button>
+          </label>
         )}
       </div>
 
@@ -425,7 +455,7 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
               {displayModels.map((m) => {
                 const id = m.id;
                 const name = m.name ?? m.id;
-                const isCustom = !bankModelIds.has(id);
+                const isManualModel = !bankModelIds.has(id);
                 const maxOut = "maxOutput" in m && typeof m.maxOutput === "number" ? m.maxOutput : null;
                 const ctxWin = "contextWindow" in m && typeof m.contextWindow === "number" ? m.contextWindow : null;
                 const checked = selectedModels.has(id);
@@ -445,7 +475,7 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
                       className="accent-primary"
                     />
                     <span className="flex-1 font-mono text-xs text-foreground">{name}</span>
-                    {isCustom && (
+                    {isManualModel && (
                       <span className="text-[9px] px-1 py-0.5 rounded bg-violet-100 text-violet-600 font-medium">自定义</span>
                     )}
                     <span className="text-[10px] text-muted-foreground/60 tabular-nums">
@@ -459,25 +489,23 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
             <p className="text-xs text-muted-foreground/60">点击"测试连接"查看可用模型</p>
           )}
           {/* Custom model input */}
-          {!isCustom && (
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={customModelId}
-                onChange={(e) => setCustomModelId(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleAddCustomModel(); }}
-                placeholder="添加自定义模型 ID"
-                className="flex-1 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs font-mono"
-              />
-              <button
-                type="button"
-                onClick={handleAddCustomModel}
-                className="px-3 py-2 text-xs rounded-lg border border-border/60 hover:bg-secondary/50 transition-colors"
-              >
-                添加
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={customModelId}
+              onChange={(e) => setCustomModelId(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAddCustomModel(); }}
+              placeholder="添加自定义模型 ID"
+              className="flex-1 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs font-mono"
+            />
+            <button
+              type="button"
+              onClick={handleAddCustomModel}
+              className="px-3 py-2 text-xs rounded-lg border border-border/60 hover:bg-secondary/50 transition-colors"
+            >
+              添加
+            </button>
+          </div>
         </div>
 
         {/* Advanced params */}

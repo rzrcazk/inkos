@@ -2,22 +2,22 @@ import { describe, expect, it } from "vitest";
 import { parseLLMOverridesFromArgv } from "../utils.js";
 
 describe("parseLLMOverridesFromArgv", () => {
-  it("parses service/model/api key env and transport overrides from CLI argv", () => {
+  it("parses service/model/base-url and transport overrides from CLI argv", () => {
     expect(parseLLMOverridesFromArgv([
       "write",
       "next",
       "--service",
       "google",
       "--model=gemini-2.5-flash",
-      "--api-key-env",
-      "GOOGLE_API_KEY",
+      "--base-url",
+      "https://custom.example.com/v1",
       "--api-format",
       "chat",
       "--no-stream",
     ])).toEqual({
       service: "google",
       model: "gemini-2.5-flash",
-      apiKeyEnv: "GOOGLE_API_KEY",
+      baseUrl: "https://custom.example.com/v1",
       apiFormat: "chat",
       stream: false,
     });

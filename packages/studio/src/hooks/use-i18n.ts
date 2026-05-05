@@ -162,13 +162,15 @@ const strings = {
   "radar.noConnectedService": { zh: "没有已连接的服务", en: "No connected services" },
   "radar.noModelsHint": { zh: "请先测试连接获取模型列表", en: "Test connection to get model list" },
   "radar.loadingModels": { zh: "加载模型中...", en: "Loading models..." },
+  "radar.cachedAt": { zh: "上次扫描：", en: "Last scan: " },
+  "radar.rescan": { zh: "重新扫描", en: "Rescan" },
 
   // Doctor
   "doctor.title": { zh: "环境诊断", en: "Environment Check" },
   "doctor.recheck": { zh: "重新检查", en: "Re-check" },
   "doctor.inkosJson": { zh: "inkos.json 配置", en: "inkos.json configuration" },
-  "doctor.projectEnv": { zh: "项目 .env 文件", en: "Project .env file" },
-  "doctor.globalEnv": { zh: "全局 ~/.inkos/.env", en: "Global ~/.inkos/.env" },
+  "doctor.projectSecrets": { zh: "项目 secrets.json", en: "Project secrets.json" },
+  "doctor.globalSecrets": { zh: "全局 ~/.inkos/secrets.json", en: "Global ~/.inkos/secrets.json" },
   "doctor.booksDir": { zh: "书籍目录", en: "Books directory" },
   "doctor.llmApi": { zh: "LLM API 连接", en: "LLM API connectivity" },
   "doctor.connected": { zh: "已连接", en: "Connected" },

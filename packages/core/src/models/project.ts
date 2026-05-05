@@ -9,6 +9,7 @@ const LLMServiceEntrySchema = z.object({
   apiFormat: z.enum(["chat", "responses", "anthropic"]).optional(),
   stream: z.boolean().optional(),
   selectedModels: z.array(z.string()).optional(),
+  enabled: z.boolean().optional(),
 });
 
 // C1 (v2.0.0 breaking): 删除 maxTokens / maxTokensCap 字段。

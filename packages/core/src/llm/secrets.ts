@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { homedir } from "node:os";
 
 export interface SecretsFile {
   services: Record<string, { apiKey: string }>;
@@ -7,6 +8,7 @@ export interface SecretsFile {
 
 const SECRETS_DIR = ".inkos";
 const SECRETS_FILE = "secrets.json";
+const GLOBAL_SECRETS_PATH = join(homedir(), ".inkos", SECRETS_FILE);
 
 const LEGACY_SERVICE_ID_REMAP: Record<string, string> = {
   siliconflow: "siliconcloud",
@@ -64,14 +66,45 @@ export async function getServiceApiKey(
   projectRoot: string,
   service: string,
 ): Promise<string | null> {
-  // 1. secrets.json
+  // 1. Project secrets: .inkos/secrets.json
   const secrets = await loadSecrets(projectRoot);
   const entry = secrets.services[service];
   if (entry?.apiKey) return entry.apiKey;
 
-  // 2. Environment variable: MOONSHOT_API_KEY, DEEPSEEK_API_KEY, etc.
-  const envKey = `${service.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase()}_API_KEY`;
-  if (process.env[envKey]) return process.env[envKey]!;
+  // 2. Global secrets: ~/.inkos/secrets.json
+  const globalSecrets = await loadGlobalSecrets();
+  const globalEntry = globalSecrets.services[service];
+  if (globalEntry?.apiKey) return globalEntry.apiKey;
 
   return null;
+}
+
+async function readGlobalSecretsRaw(): Promise<SecretsFile> {
+  try {
+    const raw = await readFile(GLOBAL_SECRETS_PATH, "utf-8");
+    const parsed = JSON.parse(raw) as SecretsFile;
+    if (!parsed || typeof parsed !== "object" || !parsed.services) {
+      return { services: {} };
+    }
+    return parsed;
+  } catch {
+    return { services: {} };
+  }
+}
+
+export async function loadGlobalSecrets(): Promise<SecretsFile> {
+  const raw = await readGlobalSecretsRaw();
+  const { data, changed } = migrateLegacyServiceIds(raw);
+  if (changed) await saveGlobalSecrets(data);
+  return data;
+}
+
+export async function saveGlobalSecrets(secrets: SecretsFile): Promise<void> {
+  const dir = join(homedir(), ".inkos");
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, SECRETS_FILE),
+    JSON.stringify(secrets, null, 2),
+    "utf-8",
+  );
 }
