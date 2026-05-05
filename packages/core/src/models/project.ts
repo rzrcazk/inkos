@@ -28,6 +28,10 @@ export const LLMConfigSchema = z.object({
   apiFormat: z.enum(["chat", "responses"]).default("chat"),
   stream: z.boolean().default(true),
   services: z.array(LLMServiceEntrySchema).optional(),
+  routes: z.record(z.object({
+    service: z.string().min(1),
+    model: z.string().min(1),
+  })).optional(),
   defaultModel: z.string().min(1).optional(),
 });
 

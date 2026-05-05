@@ -1747,12 +1747,13 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   });
 
   app.post("/api/v1/agent", async (c) => {
-    const { instruction, activeBookId, sessionId: reqSessionId, model: reqModel, service: reqService } = await c.req.json<{
+    const { instruction, activeBookId, sessionId: reqSessionId, model: reqModel, service: reqService, action: reqAction } = await c.req.json<{
       instruction: string;
       activeBookId?: string;
       sessionId?: string;
       model?: string;
       service?: string;
+      action?: string;
     }>();
     const sessionId = reqSessionId;
     if (!instruction?.trim()) {
@@ -1843,7 +1844,28 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       }
 
       if (!resolvedModel) {
-        // 2. Try defaultModel from new config format
+        // 2. Try task route from llm.routes config
+        const rawConfig = config.llm as unknown as Record<string, unknown>;
+        const routes = rawConfig.routes as Record<string, { service: string; model: string }> | undefined;
+        if (reqAction && routes?.[reqAction]) {
+          const route = routes[reqAction];
+          const configuredEntry = await resolveConfiguredServiceEntry(root, route.service);
+          try {
+            const resolved = await resolveServiceModel(
+              route.service,
+              route.model,
+              root,
+              await resolveConfiguredServiceBaseUrl(root, route.service),
+              configuredEntry?.apiFormat,
+            );
+            resolvedModel = resolved.model;
+            resolvedApiKey = resolved.apiKey;
+          } catch { /* fall through */ }
+        }
+      }
+
+      if (!resolvedModel) {
+        // 3. Try defaultModel from new config format
         const rawConfig = config.llm as unknown as Record<string, unknown>;
         const defaultModel = rawConfig.defaultModel as string | undefined;
         const servicesArr = normalizeServiceConfig(rawConfig.services);
@@ -1864,33 +1886,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       }
 
       if (!resolvedModel) {
-        // 3. Try first connected service from secrets
-        const secrets = await loadSecrets(root);
-        for (const [svcName, svcData] of Object.entries(secrets.services)) {
-          if (svcData?.apiKey) {
-            try {
-              const models = await listModelsForService(svcName, svcData.apiKey);
-              const textModels = filterTextChatModels(models);
-              if (textModels.length > 0) {
-                const configuredEntry = await resolveConfiguredServiceEntry(root, svcName);
-                const resolved = await resolveServiceModel(
-                  svcName,
-                  textModels[0].id,
-                  root,
-                  await resolveConfiguredServiceBaseUrl(root, svcName),
-                  configuredEntry?.apiFormat,
-                );
-                resolvedModel = resolved.model;
-                resolvedApiKey = resolved.apiKey;
-                break;
-              }
-            } catch { /* try next */ }
-          }
-        }
-      }
-
-      if (!resolvedModel) {
-        // 4. Legacy fallback: use createLLMClient
+        // 4. Fall back to the project-configured service/model (createLLMClient)
         resolvedModel = client._piModel
           ? client._piModel
           : { provider: config.llm.provider ?? "anthropic", modelId: config.llm.model } as any;
