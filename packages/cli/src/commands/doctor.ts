@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { findProjectRoot, log, logError, GLOBAL_ENV_PATH } from "../utils.js";
+import { findProjectRoot, log, logError } from "../utils.js";
 import { fetchWithProxy } from "@actalk/inkos-core";
 import {
   ensureNodeRuntimePinFiles,
@@ -136,29 +136,30 @@ export const doctorCommand = new Command("doctor")
       checks.push({ name: "inkos.json", ok: false, detail: "Not found. Run 'inkos init'" });
     }
 
-    // 3. Check .env exists
-    try {
-      await readFile(join(root, ".env"), "utf-8");
-      checks.push({ name: ".env", ok: true, detail: "Found" });
-    } catch {
-      checks.push({ name: ".env", ok: false, detail: "Not found" });
-    }
-
-    // 4. Check global config
+    // 3. Check secrets
     {
-      let hasGlobal = false;
-      try {
-        const globalContent = await readFile(GLOBAL_ENV_PATH, "utf-8");
-        hasGlobal = globalContent.includes("INKOS_LLM_API_KEY=") && !globalContent.includes("your-api-key-here");
-      } catch { /* no global config */ }
+      const { existsSync } = await import("node:fs");
+      const hasProjectSecrets = existsSync(join(root, ".inkos", "secrets.json"));
       checks.push({
-        name: "Global Config",
-        ok: hasGlobal,
-        detail: hasGlobal ? `Found (${GLOBAL_ENV_PATH})` : "Not set. Run 'inkos config set-global'",
+        name: "Project Secrets",
+        ok: hasProjectSecrets,
+        detail: hasProjectSecrets ? "Found (.inkos/secrets.json)" : "Not found",
       });
     }
 
-    // 5. Check effective LLM config (Studio project base + env/CLI overlay, or legacy env)
+    // 4. Check global secrets
+    {
+      const { existsSync } = await import("node:fs");
+      const globalSecretsPath = join(process.env.HOME ?? "", ".inkos", "secrets.json");
+      const hasGlobalSecrets = existsSync(globalSecretsPath);
+      checks.push({
+        name: "Global Secrets",
+        ok: hasGlobalSecrets,
+        detail: hasGlobalSecrets ? `Found (${globalSecretsPath})` : "Not set. Run 'inkos config set-global' or configure in Studio",
+      });
+    }
+
+    // 5. Check effective LLM config
     {
       const { loadConfigWithDiagnostics } = await import("../utils.js");
       const { isApiKeyOptionalForEndpoint } = await import("@actalk/inkos-core");
@@ -188,11 +189,11 @@ export const doctorCommand = new Command("doctor")
           ? "Optional for local/self-hosted endpoint"
           : hasKey
             ? "Configured"
-            : "Missing — save a Studio service key or set env for CLI/daemon/deploy",
+            : "Missing — configure in Studio services or run 'inkos config set-global'",
       });
     }
 
-    // 5. Check books directory
+    // 6. Check books directory
     try {
       const { StateManager } = await import("@actalk/inkos-core");
       const state = new StateManager(root);
@@ -206,7 +207,7 @@ export const doctorCommand = new Command("doctor")
       checks.push({ name: "Books", ok: true, detail: "0 books" });
     }
 
-    // 5b. Check version migration status
+    // 6b. Check version migration status
     {
       const { existsSync } = await import("node:fs");
       const hasStructuredState = existsSync(join(root, "books"));
@@ -236,7 +237,7 @@ export const doctorCommand = new Command("doctor")
       }
     }
 
-    // 6. API connectivity test
+    // 7. API connectivity test
     try {
       const { createLLMClient, chatCompletion, LLMConfigSchema, isApiKeyOptionalForEndpoint, resolveServiceModelsBaseUrl } = await import("@actalk/inkos-core");
       const { loadConfig } = await import("../utils.js");
@@ -246,20 +247,18 @@ export const doctorCommand = new Command("doctor")
         const config = await loadConfig();
         llmConfig = config.llm;
       } catch {
-        // No project config — try building from global env
-        const { config: loadDotenv } = await import("dotenv");
-        loadDotenv({ path: GLOBAL_ENV_PATH });
-        const env = process.env;
-        const apiKeyOptional = isApiKeyOptionalForEndpoint({
-          provider: env.INKOS_LLM_PROVIDER,
-          baseUrl: env.INKOS_LLM_BASE_URL,
-        });
-        if ((env.INKOS_LLM_API_KEY || apiKeyOptional) && env.INKOS_LLM_BASE_URL && env.INKOS_LLM_MODEL) {
+        // No project config — try building from global secrets
+        const { loadGlobalSecrets } = await import("@actalk/inkos-core");
+        const globalSecrets = await loadGlobalSecrets();
+        const firstService = Object.keys(globalSecrets.services)[0];
+        if (firstService && globalSecrets.services[firstService]?.apiKey) {
+          const { resolveServicePreset } = await import("@actalk/inkos-core");
+          const preset = resolveServicePreset(firstService);
           llmConfig = LLMConfigSchema.parse({
-            provider: env.INKOS_LLM_PROVIDER ?? "custom",
-            baseUrl: env.INKOS_LLM_BASE_URL,
-            apiKey: env.INKOS_LLM_API_KEY ?? "",
-            model: env.INKOS_LLM_MODEL,
+            provider: preset?.api.startsWith("anthropic") ? "anthropic" : "openai",
+            baseUrl: preset?.baseUrl ?? "",
+            apiKey: globalSecrets.services[firstService]!.apiKey,
+            model: "unknown",
           });
         }
       }
@@ -268,7 +267,7 @@ export const doctorCommand = new Command("doctor")
         checks.push({
           name: "API Connectivity",
           ok: false,
-          detail: "No LLM config available (no project config or global .env)",
+          detail: "No LLM config available (no project config or global secrets)",
         });
       } else {
         checks.push({
@@ -341,14 +340,14 @@ export const doctorCommand = new Command("doctor")
       const hints: string[] = [];
 
       if (errMsg.includes("Connection error") || errMsg.includes("ECONNREFUSED") || errMsg.includes("fetch failed")) {
-        hints.push("baseUrl 可能不正确，检查 INKOS_LLM_BASE_URL 是否包含完整路径（如 /v1）");
+        hints.push("baseUrl 可能不正确，检查服务配置中的 baseUrl 是否包含完整路径（如 /v1）");
       }
       if (errMsg.includes("400")) {
         hints.push("检查提供方文档，确认该接口要求 stream=true、stream=false，还是根本不支持 stream");
-        hints.push("检查模型名称是否正确（INKOS_LLM_MODEL）");
+        hints.push("检查模型名称是否正确");
       }
       if (errMsg.includes("401")) {
-        hints.push("API Key 无效，检查 INKOS_LLM_API_KEY");
+        hints.push("API Key 无效，检查服务配置中的 API Key");
       }
 
       checks.push({

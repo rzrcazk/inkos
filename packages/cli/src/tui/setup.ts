@@ -9,8 +9,9 @@ import {
   brightCyan, brightGreen, brightWhite,
 } from "./ansi.js";
 import { resolveTuiLocale, type TuiLocale } from "./i18n.js";
-import { GLOBAL_ENV_PATH, loadConfig } from "../utils.js";
+import { loadConfig } from "../utils.js";
 import { ensureProjectGitignore } from "../project-bootstrap.js";
+import { loadSecrets, saveSecrets, loadGlobalSecrets, saveGlobalSecrets, type SecretsFile } from "@actalk/inkos-core";
 
 const PROVIDERS = ["openai", "anthropic", "custom"] as const;
 type SetupProvider = typeof PROVIDERS[number];
@@ -122,20 +123,17 @@ export function buildInteractiveSetupCopy(locale: TuiLocale): InteractiveSetupCo
 export function buildAutoInitMessages(projectName: string, locale: TuiLocale): {
   readonly initializing: string;
   readonly initialized: string;
-  readonly envTemplateHeader: string;
 } {
   if (locale === "en") {
     return {
       initializing: `Initializing project in ${projectName}/ ...`,
       initialized: "Project initialized",
-      envTemplateHeader: "# LLM Configuration — run inkos tui to configure interactively",
     };
   }
 
   return {
     initializing: `正在初始化项目：${projectName}/ ...`,
     initialized: "项目已初始化",
-    envTemplateHeader: "# LLM 配置 —— 运行 inkos tui 进行交互式配置",
   };
 }
 
@@ -206,25 +204,23 @@ export async function interactiveLlmSetup(
     console.log(c(`     ${copy.hints.scope}`, dim));
     const scope = await rl.question(`     ${c("❯", cyan)} ${c(copy.defaults.scope, dim)} `);
     const useGlobal = scope.trim().toLowerCase() !== "project";
-    const finalProvider = resolveSetupProvider(provider, baseUrl);
+    const finalProvider = resolveSetupProvider(provider, baseUrl.trim());
 
-    const envContent = [
-      `INKOS_LLM_PROVIDER=${finalProvider}`,
-      `INKOS_LLM_BASE_URL=${baseUrl.trim()}`,
-      `INKOS_LLM_API_KEY=${apiKey.trim()}`,
-      `INKOS_LLM_MODEL=${model.trim()}`,
-    ].join("\n");
+    const serviceKey = finalProvider === "custom" ? `custom:${baseUrl.trim()}` : finalProvider;
+    const secrets: SecretsFile = {
+      services: {
+        [serviceKey]: { apiKey: apiKey.trim() },
+      },
+    };
 
     if (useGlobal) {
-      const globalDir = join(GLOBAL_ENV_PATH, "..");
-      await mkdir(globalDir, { recursive: true });
-      await writeFile(GLOBAL_ENV_PATH, envContent + "\n", "utf-8");
+      await saveGlobalSecrets(secrets);
       console.log();
-      console.log(`  ${c("✓", brightGreen, bold)} ${c(copy.savedTo, dim)} ${c(GLOBAL_ENV_PATH, gray)}`);
+      console.log(`  ${c("✓", brightGreen, bold)} ${c(copy.savedTo, dim)} ${c("~/.inkos/secrets.json", gray)}`);
     } else {
-      await writeFile(join(projectRoot, ".env"), envContent + "\n", "utf-8");
+      await saveSecrets(projectRoot, secrets);
       console.log();
-      console.log(`  ${c("✓", brightGreen, bold)} ${c(copy.savedTo, dim)} ${c(".env", gray)}`);
+      console.log(`  ${c("✓", brightGreen, bold)} ${c(copy.savedTo, dim)} ${c(".inkos/secrets.json", gray)}`);
     }
     console.log();
   } finally {
@@ -247,15 +243,15 @@ async function autoInit(cwd: string): Promise<void> {
     version: "0.1.0",
     language: "zh",
     llm: {
-      provider: process.env.INKOS_LLM_PROVIDER ?? "openai",
-      baseUrl: process.env.INKOS_LLM_BASE_URL ?? "",
-      model: process.env.INKOS_LLM_MODEL ?? "",
+      provider: "openai",
+      baseUrl: "",
+      model: "",
     },
     notify: [],
     daemon: {
       schedule: {
         radarCron: "0 */6 * * *",
-        writeCron: "*/15 * * * *",
+        writeCron: "*/15 * * *",
       },
       maxConcurrentBooks: 3,
     },
@@ -267,41 +263,30 @@ async function autoInit(cwd: string): Promise<void> {
     "utf-8",
   );
 
-  const hasGlobal = await hasGlobalConfig();
-  if (!hasGlobal) {
-    await writeFile(
-      join(cwd, ".env"),
-      [
-        messages.envTemplateHeader,
-        "INKOS_LLM_PROVIDER=openai",
-        "INKOS_LLM_BASE_URL=",
-        "INKOS_LLM_API_KEY=",
-        "INKOS_LLM_MODEL=",
-      ].join("\n"),
-      "utf-8",
-    );
-  }
-
   await ensureProjectGitignore(cwd);
 
   console.log(`  ${c("✓", brightGreen, bold)} ${c(messages.initialized, dim)}`);
 }
 
 async function hasLlmConfig(projectRoot: string): Promise<boolean> {
-  const projectEnv = join(projectRoot, ".env");
-  if (await checkEnvForKey(projectEnv)) return true;
-  return checkEnvForKey(GLOBAL_ENV_PATH);
+  const projectSecrets = await checkSecretsForKey(projectRoot);
+  if (projectSecrets) return true;
+  return checkGlobalSecretsForKey();
 }
 
-async function hasGlobalConfig(): Promise<boolean> {
-  return checkEnvForKey(GLOBAL_ENV_PATH);
-}
-
-async function checkEnvForKey(envPath: string): Promise<boolean> {
+async function checkGlobalSecretsForKey(): Promise<boolean> {
   try {
-    const content = await readFile(envPath, "utf-8");
-    const match = content.match(/INKOS_LLM_API_KEY=(.+)/);
-    return !!match && match[1]!.trim().length > 0 && !match[1]!.includes("your-api-key");
+    const secrets = await loadGlobalSecrets();
+    return Object.values(secrets.services).some((s) => s?.apiKey && !s.apiKey.includes("your-api-key"));
+  } catch {
+    return false;
+  }
+}
+
+async function checkSecretsForKey(projectRoot: string): Promise<boolean> {
+  try {
+    const secrets = await loadSecrets(projectRoot);
+    return Object.values(secrets.services).some((s) => s?.apiKey && !s.apiKey.includes("your-api-key"));
   } catch {
     return false;
   }
@@ -325,15 +310,8 @@ export async function detectModelInfo(projectRoot: string): Promise<ModelInfo | 
       baseUrl: config.llm.baseUrl ?? "",
     };
   } catch {
-    // Fall back to legacy env parsing below.
+    return undefined;
   }
-
-  const paths = [join(projectRoot, ".env"), GLOBAL_ENV_PATH];
-  for (const p of paths) {
-    const info = await parseEnvModel(p);
-    if (info) return info;
-  }
-  return undefined;
 }
 
 export async function detectProjectLanguage(projectRoot: string): Promise<string | undefined> {
@@ -341,25 +319,6 @@ export async function detectProjectLanguage(projectRoot: string): Promise<string
     const raw = await readFile(join(projectRoot, "inkos.json"), "utf-8");
     const parsed = JSON.parse(raw) as { language?: string };
     return parsed.language;
-  } catch {
-    return undefined;
-  }
-}
-
-async function parseEnvModel(envPath: string): Promise<ModelInfo | undefined> {
-  try {
-    const content = await readFile(envPath, "utf-8");
-    const get = (key: string) => {
-      const m = content.match(new RegExp(`^${key}=(.+)$`, "m"));
-      return m?.[1]?.trim() ?? "";
-    };
-    const key = get("INKOS_LLM_API_KEY");
-    if (!key || key.includes("your-api-key")) return undefined;
-    return {
-      provider: get("INKOS_LLM_PROVIDER") || "openai",
-      model: get("INKOS_LLM_MODEL") || "unknown",
-      baseUrl: get("INKOS_LLM_BASE_URL") || "",
-    };
   } catch {
     return undefined;
   }

@@ -35,7 +35,7 @@ export const initCommand = new Command("init")
         if (name) log(`  cd ${name}`);
         log("  # Option 1: Set global config (recommended, one-time):");
         log("  inkos config set-global --provider openai --base-url <your-api-url> --api-key <your-key> --model <your-model>");
-        log("  # Option 2: Edit .env for this project only");
+        log("  # Option 2: Set project config via inkos config set");
         log("");
         log(exampleCreate);
       }

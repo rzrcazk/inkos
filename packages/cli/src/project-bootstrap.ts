@@ -1,6 +1,6 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { GLOBAL_ENV_PATH } from "./utils.js";
+import { loadGlobalSecrets } from "@actalk/inkos-core";
 
 export interface ProjectBootstrapOptions {
   readonly language?: "zh" | "en";
@@ -9,8 +9,8 @@ export interface ProjectBootstrapOptions {
 
 async function hasGlobalConfig(): Promise<boolean> {
   try {
-    const content = await readFile(GLOBAL_ENV_PATH, "utf-8");
-    return content.includes("INKOS_LLM_API_KEY=") && !content.includes("your-api-key-here");
+    const secrets = await loadGlobalSecrets();
+    return Object.values(secrets.services).some((s) => s?.apiKey && !s.apiKey.includes("your-api-key"));
   } catch {
     return false;
   }
@@ -32,7 +32,7 @@ async function writeMaybe(path: string, content: string, overwrite: boolean): Pr
   await writeFile(path, content, "utf-8");
 }
 
-const DEFAULT_GITIGNORE_ENTRIES = [".env", "node_modules/", ".DS_Store"] as const;
+const DEFAULT_GITIGNORE_ENTRIES = ["node_modules/", ".DS_Store"] as const;
 
 export async function ensureProjectGitignore(projectDir: string): Promise<void> {
   const path = join(projectDir, ".gitignore");
@@ -78,46 +78,11 @@ function buildProjectConfig(projectDir: string, language: "zh" | "en") {
     daemon: {
       schedule: {
         radarCron: "0 */6 * * *",
-        writeCron: "*/15 * * * *",
+        writeCron: "*/15 * * *",
       },
       maxConcurrentBooks: 3,
     },
   };
-}
-
-function buildProjectEnvTemplate(globalConfigured: boolean): string {
-  if (globalConfigured) {
-    return [
-      "# Project-level LLM overrides (optional)",
-      "# Global config at ~/.inkos/.env will be used by default.",
-      "# Switch Studio to '使用 Studio 配置' if you want per-project service settings.",
-      "# Uncomment below to override for this project only:",
-      "# INKOS_LLM_PROVIDER=openai",
-      "# INKOS_LLM_BASE_URL=",
-      "# INKOS_LLM_API_KEY=",
-      "# INKOS_LLM_MODEL=",
-      "",
-      "# Web search (optional):",
-      "# TAVILY_API_KEY=tvly-xxxxx",
-      "",
-    ].join("\n");
-  }
-
-  return [
-    "# Optional project-level LLM overrides",
-    "# Studio can manage provider / model / key without editing this file.",
-    "# Uncomment only if you want this directory to force env-based config:",
-    "# INKOS_LLM_PROVIDER=openai",
-    "# INKOS_LLM_BASE_URL=",
-    "# INKOS_LLM_API_KEY=",
-    "# INKOS_LLM_MODEL=",
-    "# INKOS_LLM_API_FORMAT=chat",
-    "# INKOS_LLM_STREAM=true",
-    "",
-    "# Web search (optional):",
-    "# TAVILY_API_KEY=tvly-xxxxx",
-    "",
-  ].join("\n");
 }
 
 export async function initializeProjectDirectory(
@@ -142,10 +107,7 @@ export async function initializeProjectDirectory(
     "utf-8",
   );
 
-  const globalConfigured = await hasGlobalConfig();
-
   await Promise.all([
-    writeMaybe(join(projectDir, ".env"), buildProjectEnvTemplate(globalConfigured), overwriteSupportFiles),
     ensureProjectGitignore(projectDir),
     writeMaybe(join(projectDir, ".nvmrc"), "22\n", overwriteSupportFiles),
     writeMaybe(join(projectDir, ".node-version"), "22\n", overwriteSupportFiles),

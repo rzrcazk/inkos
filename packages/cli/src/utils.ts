@@ -1,9 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { createLLMClient, StateManager, createLogger, createStderrSink, createJsonLineSink, resolveEffectiveLLMConfig, loadLLMEnvLayers, GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH, type EffectiveLLMConfigResult, type LLMConfigCliOverrides, type ProjectConfig, type PipelineConfig, type LogSink } from "@actalk/inkos-core";
+import { createLLMClient, StateManager, createLogger, createStderrSink, createJsonLineSink, resolveEffectiveLLMConfig, type EffectiveLLMConfigResult, type LLMConfigCliOverrides, type ProjectConfig, type PipelineConfig, type LogSink } from "@actalk/inkos-core";
 import { formatSqliteMemorySupportWarning } from "./runtime-requirements.js";
-
-export { GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH };
 
 let sqliteMemorySupportWarned = false;
 
@@ -49,11 +47,9 @@ export async function loadConfigWithDiagnostics(options?: {
     ...parseLLMOverridesFromArgv(process.argv.slice(2)),
     ...options?.cli,
   };
-  const envLayers = await loadLLMEnvLayers(root);
   return resolveEffectiveLLMConfig({
     consumer: "cli",
     projectRoot: root,
-    envLayers,
     cli,
     requireApiKey: options?.requireApiKey,
   });
@@ -67,7 +63,6 @@ export function parseLLMOverridesFromArgv(argv: readonly string[]): LLMConfigCli
   const overrides: {
     service?: string;
     model?: string;
-    apiKeyEnv?: string;
     baseUrl?: string;
     apiFormat?: "chat" | "responses";
     stream?: boolean;
@@ -86,9 +81,6 @@ export function parseLLMOverridesFromArgv(argv: readonly string[]): LLMConfigCli
     } else if (flag === "--model") {
       const value = nextValue();
       if (value) overrides.model = value;
-    } else if (flag === "--api-key-env") {
-      const value = nextValue();
-      if (value) overrides.apiKeyEnv = value;
     } else if (flag === "--base-url") {
       const value = nextValue();
       if (value) overrides.baseUrl = value;
