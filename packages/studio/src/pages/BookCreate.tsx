@@ -4,6 +4,11 @@ import { fetchJson, useApi } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
+import {
+  clearBookCreateSessionId,
+  getBookCreateSessionId,
+  setBookCreateSessionId,
+} from "./chat-page-state";
 
 interface Nav {
   toDashboard: () => void;
@@ -40,8 +45,16 @@ interface AgentResponse {
   readonly response?: string;
   readonly error?: string;
   readonly session?: {
+    readonly sessionId?: string;
     readonly activeBookId?: string;
     readonly creationDraft?: BookCreationDraft;
+  };
+}
+
+interface SessionResponse {
+  readonly session?: {
+    readonly sessionId?: string;
+    readonly bookId?: string | null;
   };
 }
 
@@ -194,6 +207,84 @@ const DEFAULT_BOOK_READY_MAX_ATTEMPTS = 120;
 const DEFAULT_BOOK_READY_DELAY_MS = 250;
 const CREATION_DRAFT_SYNC_INTERVAL_MS = 2500;
 
+interface BookCreateSessionOptions {
+  readonly fetchSession?: (sessionId: string) => Promise<SessionResponse>;
+  readonly createSession?: () => Promise<SessionResponse>;
+  readonly getStoredSessionId?: () => string | null;
+  readonly setStoredSessionId?: (sessionId: string) => void;
+  readonly clearStoredSessionId?: () => void;
+}
+
+let pendingDefaultBookCreateSessionId: Promise<string> | null = null;
+
+function readSessionId(response: SessionResponse): string | null {
+  const sessionId = response.session?.sessionId?.trim();
+  return sessionId || null;
+}
+
+export function buildBookCreateAgentRequest(
+  instruction: string,
+  sessionId: string,
+): { instruction: string; sessionId: string } {
+  const trimmedSessionId = sessionId.trim();
+  if (!trimmedSessionId) {
+    throw new Error("Book create session is not ready.");
+  }
+  return { instruction, sessionId: trimmedSessionId };
+}
+
+export async function ensureBookCreateSessionId(
+  options: BookCreateSessionOptions = {},
+): Promise<string> {
+  const usesDefaultDeps = Object.keys(options).length === 0;
+  if (usesDefaultDeps && pendingDefaultBookCreateSessionId) {
+    return pendingDefaultBookCreateSessionId;
+  }
+
+  const fetchSession = options.fetchSession
+    ?? ((sessionId: string) => fetchJson<SessionResponse>(`/sessions/${encodeURIComponent(sessionId)}`));
+  const createSession = options.createSession
+    ?? (() => fetchJson<SessionResponse>("/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bookId: null }),
+    }));
+  const getStoredSessionId = options.getStoredSessionId ?? getBookCreateSessionId;
+  const setStoredSessionId = options.setStoredSessionId ?? setBookCreateSessionId;
+  const clearStoredSessionId = options.clearStoredSessionId ?? clearBookCreateSessionId;
+
+  const resolveSessionId = async (): Promise<string> => {
+    const storedSessionId = getStoredSessionId()?.trim();
+    if (storedSessionId) {
+      try {
+        const existing = await fetchSession(storedSessionId);
+        if (existing.session?.bookId === null) {
+          return storedSessionId;
+        }
+      } catch {
+        // Stale localStorage entry; fall through and create a fresh orphan session.
+      }
+      clearStoredSessionId();
+    }
+
+    const createdSessionId = readSessionId(await createSession());
+    if (!createdSessionId) {
+      throw new Error("Failed to create book session");
+    }
+    setStoredSessionId(createdSessionId);
+    return createdSessionId;
+  };
+
+  if (!usesDefaultDeps) {
+    return resolveSessionId();
+  }
+
+  pendingDefaultBookCreateSessionId = resolveSessionId().finally(() => {
+    pendingDefaultBookCreateSessionId = null;
+  });
+  return pendingDefaultBookCreateSessionId;
+}
+
 export async function waitForBookReady(
   bookId: string,
   options: WaitForBookReadyOptions = {},
@@ -256,6 +347,7 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [bookCreateSessionId, setBookCreateSessionIdState] = useState<string | null>(null);
 
   const summaryRows = useMemo(
     () => (draft ? buildCreationDraftSummary(draft, projectLang) : []),
@@ -272,7 +364,15 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
   useEffect(() => {
     let cancelled = false;
     setLoadingDraft(true);
-    void refreshDraft()
+    void Promise.all([
+      ensureBookCreateSessionId(),
+      refreshDraft(),
+    ])
+      .then(([sessionId]) => {
+        if (!cancelled) {
+          setBookCreateSessionIdState(sessionId);
+        }
+      })
       .catch((cause) => {
         if (!cancelled) {
           setError(cause instanceof Error ? cause.message : String(cause));
@@ -303,10 +403,14 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
   }, [submitting, creating]);
 
   const runAgentInstruction = async (instruction: string): Promise<AgentResponse> => {
+    const sessionId = bookCreateSessionId ?? await ensureBookCreateSessionId();
+    if (!bookCreateSessionId) {
+      setBookCreateSessionIdState(sessionId);
+    }
     return fetchJson<AgentResponse>("/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instruction }),
+      body: JSON.stringify(buildBookCreateAgentRequest(instruction, sessionId)),
     });
   };
 
@@ -320,6 +424,14 @@ export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunc
     setError(null);
     try {
       const data = await runAgentInstruction(instruction);
+      const createdBookId = data.session?.activeBookId;
+      if (createdBookId) {
+        setStatus(data.response ?? null);
+        setDraft(undefined);
+        await waitForBookReady(createdBookId);
+        nav.toBook(createdBookId);
+        return;
+      }
       setInput("");
       setStatus(data.response ?? null);
       setDraft(data.session?.creationDraft);

@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  buildBookCreateAgentRequest,
   buildCreationDraftSummary,
   canCreateFromDraft,
   defaultChapterWordsForLanguage,
+  ensureBookCreateSessionId,
   platformOptionsForLanguage,
   pickValidValue,
   resolveDraftInstruction,
@@ -101,6 +103,52 @@ describe("resolveDraftInstruction", () => {
   it("forces the first ideation turn through /new so an active book does not hijack the flow", () => {
     expect(resolveDraftInstruction("我想写个港风商战悬疑", false)).toBe("/new 我想写个港风商战悬疑");
     expect(resolveDraftInstruction("把世界观改成近未来港口城", true)).toBe("把世界观改成近未来港口城");
+  });
+});
+
+describe("book create agent session", () => {
+  it("includes the orphan session id in agent requests", () => {
+    expect(buildBookCreateAgentRequest("/create", "123456-abcdef")).toEqual({
+      instruction: "/create",
+      sessionId: "123456-abcdef",
+    });
+  });
+
+  it("rejects agent requests before a session is ready", () => {
+    expect(() => buildBookCreateAgentRequest("/create", " ")).toThrow("Book create session is not ready.");
+  });
+
+  it("reuses a stored orphan session", async () => {
+    const createSession = vi.fn();
+    const setStoredSessionId = vi.fn();
+
+    await expect(ensureBookCreateSessionId({
+      getStoredSessionId: () => "123456-abcdef",
+      fetchSession: async () => ({ session: { sessionId: "123456-abcdef", bookId: null } }),
+      createSession,
+      setStoredSessionId,
+    })).resolves.toBe("123456-abcdef");
+
+    expect(createSession).not.toHaveBeenCalled();
+    expect(setStoredSessionId).not.toHaveBeenCalled();
+  });
+
+  it("replaces a stale stored session before sending agent requests", async () => {
+    const clearStoredSessionId = vi.fn();
+    const setStoredSessionId = vi.fn();
+
+    await expect(ensureBookCreateSessionId({
+      getStoredSessionId: () => "old-session",
+      fetchSession: async () => {
+        throw new Error("Session not found");
+      },
+      createSession: async () => ({ session: { sessionId: "123456-newone", bookId: null } }),
+      clearStoredSessionId,
+      setStoredSessionId,
+    })).resolves.toBe("123456-newone");
+
+    expect(clearStoredSessionId).toHaveBeenCalledOnce();
+    expect(setStoredSessionId).toHaveBeenCalledWith("123456-newone");
   });
 });
 
