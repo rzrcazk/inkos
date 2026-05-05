@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.3.9
+
+### Release Focus
+
+Studio 建书与书籍设置热修：修复新建书籍链路被已有书籍 session 劫持的问题，并恢复可见的书籍设置页入口。
+
+### Bug Fixes
+
+- 修复 Studio 新建书籍 `/new`、`/create` 没有绑定独立 orphan session，导致建书请求可能被当前书籍工作台 session 接管的问题
+- 修复建书完成后无法可靠跳转到新书 Chat 工作台的问题
+- 恢复书籍设置页路由：`#/book/:id` 继续作为 Chat 工作台，`#/book/:id/settings` 用于修改书籍配置
+- 修复 Dashboard 书籍菜单里的“书籍设置”实际打开 Chat 工作台的问题
+
 ## v1.3.8
 
 ### Release Focus
