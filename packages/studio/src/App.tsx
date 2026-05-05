@@ -5,6 +5,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Dashboard } from "./pages/Dashboard";
 import { ChatPage } from "./pages/ChatPage";
 import { BookCreate } from "./pages/BookCreate";
+import { BookDetail } from "./pages/BookDetail";
 import { ChapterReader } from "./pages/ChapterReader";
 import { Analytics } from "./pages/Analytics";
 import { ServiceListPage } from "./pages/ServiceListPage";
@@ -67,6 +68,7 @@ export function App() {
   const nav = {
     toDashboard: () => setRoute({ page: "dashboard" }),
     toBook: (bookId: string) => setRoute({ page: "book", bookId }),
+    toBookSettings: (bookId: string) => setRoute({ page: "book-settings", bookId }),
     toBookCreate: () => setRoute({ page: "book-create" }),
     toChapter: (bookId: string, chapterNumber: number) =>
       setRoute({ page: "chapter", bookId, chapterNumber }),
@@ -186,6 +188,11 @@ export function App() {
               />
               <BookSidebar bookId={route.bookId} theme={theme} t={t} sse={sse} />
               <BookSidebarToggle bookId={route.bookId} theme={theme} t={t} sse={sse} />
+            </div>
+          )}
+          {route.page === "book-settings" && (
+            <div className="max-w-4xl mx-auto px-6 py-12 md:px-12 lg:py-16 fade-in">
+              <BookDetail bookId={route.bookId} nav={nav} theme={theme} t={t} sse={sse} />
             </div>
           )}
           {route.page === "chapter" && (

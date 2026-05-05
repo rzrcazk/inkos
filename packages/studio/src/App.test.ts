@@ -7,6 +7,7 @@ describe("deriveActiveBookId", () => {
     expect(deriveActiveBookId({ page: "chapter", bookId: "beta", chapterNumber: 3 })).toBe("beta");
     expect(deriveActiveBookId({ page: "truth", bookId: "gamma" })).toBe("gamma");
     expect(deriveActiveBookId({ page: "analytics", bookId: "delta" })).toBe("delta");
+    expect(deriveActiveBookId({ page: "book-settings", bookId: "epsilon" })).toBe("epsilon");
   });
 
   it("returns undefined for non-book routes", () => {

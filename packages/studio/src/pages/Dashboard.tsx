@@ -36,6 +36,7 @@ interface BookSummary {
 
 interface Nav {
   toBook: (id: string) => void;
+  toBookSettings: (id: string) => void;
   toAnalytics: (id: string) => void;
   toBookCreate: () => void;
   toServices: () => void;
@@ -87,7 +88,7 @@ function BookMenu({ bookId, bookTitle, nav, t, onDelete, onOpenChange }: {
       {open && (
         <div className="absolute right-0 top-full mt-1 w-44 bg-card border border-border rounded-xl shadow-lg shadow-primary/5 py-1 z-50 fade-in">
           <button
-            onClick={() => { setOpen(false); nav.toBook(bookId); }}
+            onClick={() => { setOpen(false); nav.toBookSettings(bookId); }}
             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
           >
             <Settings size={14} className="text-muted-foreground" />
