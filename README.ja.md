@@ -25,7 +25,7 @@
 
 **InkOS TUI 正式リリース！** — `inkos tui` を実行してフルスクリーンのインタラクティブダッシュボードを起動。会話型創作、自然言語での書籍操作、スラッシュコマンド自動補完、テーマアニメーション——TUI、Studio、OpenClaw が同一のインタラクションカーネルを共有。
 
-**v1.3.9 Studio 作成 Hotfix** — 新規書籍作成が既存書籍の session に取り込まれる問題を修正し、Dashboard の「Book Settings」入口を復旧しました。`#/book/:id` は Chat ワークスペースのまま、`#/book/:id/settings` で書籍設定を編集できます。
+**v1.3.10 書籍作成 platform Hotfix** — Studio と CLI の書籍作成で `sub_agent.platform` の別名入力が schema validation に失敗する問題を修正しました。Studio、CLI、TUI、agent create-book は platform alias をサポート済みの値へ正規化します。
 
 **英語ネイティブ小説執筆に対応！** — 10種類の英語ジャンルプロファイルを内蔵し、専用のペーシングルール、疲労語リスト、監査ディメンションを搭載。`--lang en` を設定するだけですぐに始められます。
 

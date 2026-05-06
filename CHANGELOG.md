@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.3.10
+
+### Release Focus
+
+建书 platform 热修：修复 `sub_agent.platform` 参数在网页和命令行建书时可能因中文/别名输入触发 schema 校验失败的问题，并把新书创建链路统一收口到合法平台值。
+
+### Bug Fixes
+
+- 修复建书过程中工具调用报 `Validation failed for tool "sub_agent": - platform: must be equal to constant`，导致无法生成书籍文件的问题
+- 统一 Studio、CLI、TUI、agent create-book 链路的平台别名归一化，`番茄` / `fanqie` / `番茄小说` 等输入会落到合法枚举
+- 对未知平台值降级为 `other`，避免错误平台 id 写入书籍配置后继续影响后续流程
+- 更新 README 微信交流群二维码为 13 群
+
 ## v1.3.9
 
 ### Release Focus
