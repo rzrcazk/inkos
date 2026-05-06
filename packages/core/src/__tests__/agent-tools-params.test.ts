@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { validateToolArguments } from "@mariozechner/pi-ai";
 import { createSubAgentTool } from "../agent/agent-tools.js";
 
 describe("SubAgentParams schema", () => {
@@ -40,6 +41,38 @@ describe("SubAgentParams schema", () => {
     expect(props.genre.description).toMatch(/architect/i);
     expect(props.mode.description).toMatch(/reviser/i);
     expect(props.format.description).toMatch(/exporter/i);
+  });
+
+  it("normalizes platform aliases before sub_agent schema validation", () => {
+    const prepared = tool.prepareArguments?.({
+      agent: "architect",
+      instruction: "创建一本番茄都市文",
+      title: "夜港账本",
+      genre: "urban",
+      platform: "番茄小说",
+      language: "zh",
+    });
+
+    expect(prepared).toMatchObject({ platform: "tomato" });
+    expect(() => validateToolArguments(tool as any, {
+      name: "sub_agent",
+      arguments: prepared,
+    } as any)).not.toThrow();
+
+    const blankPlatform = tool.prepareArguments?.({
+      agent: "architect",
+      instruction: "创建一本都市文",
+      title: "空平台测试",
+      genre: "urban",
+      platform: "",
+      language: "zh",
+    });
+
+    expect(blankPlatform).not.toHaveProperty("platform");
+    expect(() => validateToolArguments(tool as any, {
+      name: "sub_agent",
+      arguments: blankPlatform,
+    } as any)).not.toThrow();
   });
 });
 
@@ -85,6 +118,20 @@ describe("architect agent — BookConfig construction", () => {
     expect(bookConfig.language).toBe("zh");
     expect(bookConfig.targetChapters).toBe(200);
     expect(bookConfig.chapterWordCount).toBe(3000);
+  });
+
+  it("normalizes unsupported platform names to other during architect creation", async () => {
+    await tool.execute("tc3", {
+      agent: "architect",
+      instruction: "Create a Royal Road fantasy novel",
+      title: "Harbor Oath",
+      genre: "fantasy",
+      platform: "royal-road",
+      language: "en",
+    } as any);
+
+    const [bookConfig] = initBookMock.mock.calls[0];
+    expect(bookConfig.platform).toBe("other");
   });
 });
 

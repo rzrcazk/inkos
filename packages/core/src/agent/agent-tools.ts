@@ -104,6 +104,55 @@ const SubAgentParams = Type.Object({
   approvedOnly: Type.Optional(Type.Boolean({ description: "exporter only: export only approved chapters. Default: false" })),
 });
 
+type SubAgentParamsType = Static<typeof SubAgentParams>;
+type ArchitectPlatform = NonNullable<SubAgentParamsType["platform"]>;
+
+function normalizeArchitectPlatform(platform: unknown): ArchitectPlatform | undefined {
+  if (typeof platform !== "string") {
+    return undefined;
+  }
+
+  const raw = platform.trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  const lowered = raw.toLowerCase();
+  const compact = lowered.replace(/[\s_-]+/g, "");
+
+  if (compact === "tomato" || compact === "fanqie" || compact === "fanqienovel" || raw.includes("番茄")) {
+    return "tomato";
+  }
+  if (compact === "qidian" || compact === "qidianzhongwenwang" || raw.includes("起点")) {
+    return "qidian";
+  }
+  if (compact === "feilu" || raw.includes("飞卢")) {
+    return "feilu";
+  }
+  if (compact === "other" || compact === "others" || raw.includes("其他") || raw.includes("其它")) {
+    return "other";
+  }
+
+  return "other";
+}
+
+function prepareSubAgentArguments(args: unknown): SubAgentParamsType {
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    return args as SubAgentParamsType;
+  }
+
+  const prepared = { ...(args as Record<string, unknown>) };
+  if ("platform" in prepared) {
+    const platform = normalizeArchitectPlatform(prepared.platform);
+    if (platform) {
+      prepared.platform = platform;
+    } else {
+      delete prepared.platform;
+    }
+  }
+  return prepared as SubAgentParamsType;
+}
+
 export function createSubAgentTool(
   pipeline: PipelineRunner,
   activeBookId: string | null,
@@ -117,9 +166,10 @@ export function createSubAgentTool(
       "'auditor' to audit quality, 'reviser' to revise a chapter, 'exporter' to export.",
     label: "Sub-Agent",
     parameters: SubAgentParams,
+    prepareArguments: prepareSubAgentArguments,
     async execute(
       _toolCallId: string,
-      params: Static<typeof SubAgentParams>,
+      params: SubAgentParamsType,
       _signal?: AbortSignal,
       onUpdate?: AgentToolUpdateCallback,
     ): Promise<AgentToolResult<unknown>> {
@@ -165,7 +215,7 @@ export function createSubAgentTool(
                 id,
                 title: resolvedTitle,
                 genre: genre ?? "general",
-                platform: (platform ?? "other") as any,
+                platform: normalizeArchitectPlatform(platform) ?? "other",
                 language: (language ?? "zh") as any,
                 status: "outlining" as any,
                 targetChapters: targetChapters ?? 200,
