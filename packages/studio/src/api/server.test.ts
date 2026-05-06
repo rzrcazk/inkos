@@ -1642,6 +1642,35 @@ describe("createStudioServer daemon lifecycle", () => {
     });
   });
 
+  it("surfaces LLM config errors during create instead of masking them as internal errors", async () => {
+    loadProjectConfigMock.mockRejectedValueOnce(
+      new Error("Studio LLM API key not set. Open Studio services and save an API key for the selected service."),
+    );
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/books/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Needs Key",
+        genre: "urban",
+        platform: "qidian",
+        language: "zh",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "LLM_CONFIG_ERROR",
+        message: "Studio LLM API key not set. Open Studio services and save an API key for the selected service.",
+      },
+    });
+    expect(processProjectInteractionRequestMock).not.toHaveBeenCalled();
+  });
+
   it("uses rollback semantics for chapter rejection instead of only flipping status", async () => {
     loadChapterIndexMock.mockResolvedValue([
       {

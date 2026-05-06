@@ -769,6 +769,11 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     if (error instanceof ApiError) {
       return c.json({ error: { code: error.code, message: error.message } }, error.status as 400);
     }
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("LLM API key not set") || message.includes("INKOS_LLM_API_KEY not set")) {
+      return c.json({ error: { code: "LLM_CONFIG_ERROR", message } }, 400);
+    }
+    console.error("[studio] Unexpected server error", error);
     return c.json(
       { error: { code: "INTERNAL_ERROR", message: "Unexpected server error." } },
       500,

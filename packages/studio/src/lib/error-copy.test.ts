@@ -17,4 +17,13 @@ describe("localizeKnownRuntimeMessage", () => {
     )).toBe("只能安全修复最新的状态降级（state-degraded）章节；当前最新章是第 5 章。");
     expect(localizeKnownRuntimeMessage("Bad request")).toBe("Bad request");
   });
+
+  it("localizes common LLM configuration errors", () => {
+    expect(localizeKnownRuntimeMessage(
+      "Studio LLM API key not set. Open Studio services and save an API key for the selected service.",
+    )).toBe("Studio 模型 API Key 未设置。请打开“模型配置”，为当前服务保存 API Key。");
+    expect(localizeKnownRuntimeMessage(
+      "INKOS_LLM_API_KEY not set. Run 'inkos config set-global' or add it to project .env file.",
+    )).toBe("INKOS_LLM_API_KEY 未设置。请运行 `inkos config set-global`，或在项目 .env 文件中添加它。");
+  });
 });
