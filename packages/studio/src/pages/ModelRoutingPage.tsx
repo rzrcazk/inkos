@@ -100,7 +100,14 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
         }
         setTaskRoutes(initial);
         setSavedTaskRoutes(initial);
-      } catch { /* use defaults */ }
+      } catch {
+        const defaults: Record<string, { service: string; model: string }> = {};
+        for (const route of TASK_ROUTES) {
+          defaults[route.key] = { service: "", model: "" };
+        }
+        setTaskRoutes(defaults);
+        setSavedTaskRoutes(defaults);
+      }
       setTaskRoutesLoading(false);
     };
     void loadRoutes();
@@ -346,7 +353,7 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
             任务路由
           </div>
           {TASK_ROUTES.map((route) => {
-            const r = taskRoutes[route.key]!;
+            const r = taskRoutes[route.key] ?? { service: "", model: "" };
             const models = r.service ? (modelsByService[r.service] ?? []) : [];
             return (
               <div key={route.key} className="space-y-2 pt-3 border-t border-border/20 first:pt-2 first:border-t-0">

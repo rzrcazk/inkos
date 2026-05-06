@@ -36,6 +36,16 @@ const INKOS_USER_AGENT = "InkOS/1.3.5";
 const UNKNOWN_MODEL_FALLBACK_MAX_TOKENS = 8192 * 3;
 const TRANSIENT_LLM_RETRIES = 2;
 
+function truncStr(s: string, n = 80): string {
+  if (s.length <= n) return s;
+  const half = Math.floor(n / 2);
+  return `${s.slice(0, half)}…${s.slice(-half)}`;
+}
+
+function llmLog(msg: string): void {
+  process.stderr.write(`[LLM] ${msg}\n`);
+}
+
 function mergeUserAgent(headers?: Record<string, string>): Record<string, string> {
   return { "User-Agent": INKOS_USER_AGENT, ...(headers ?? {}) };
 }
@@ -660,7 +670,10 @@ async function chatCompletionViaCustomAnthropicCompatible(
   const system = joinSystemPrompt(messages);
   if (system) payload.system = system;
 
-  const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, "")}/messages`, {
+  const apiUrl = `${baseUrl.replace(/\/$/, "")}/messages`;
+  llmLog(`→ POST ${truncStr(apiUrl, 100)}  model=${model}  msgs=${messages.length}  maxTok=${resolved.maxTokens}  stream=${client.stream}`);
+
+  const response = await fetchWithProxy(apiUrl, {
     method: "POST",
     headers: {
       "User-Agent": INKOS_USER_AGENT,
@@ -673,16 +686,28 @@ async function chatCompletionViaCustomAnthropicCompatible(
     body: JSON.stringify(payload),
   }, client.proxyUrl);
 
+  llmLog(`← ${response.status} ${response.statusText}`);
+
   if (!response.ok) {
     throw wrapLLMError(new Error(await readErrorResponse(response)), errorCtx);
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("text/html")) {
+    throw wrapLLMError(
+      new Error(`API 端点返回了 HTML 页面而非 API 响应，请检查 baseUrl 配置是否正确：${baseUrl}`),
+      errorCtx,
+    );
   }
 
   if (!client.stream) {
     const json = await response.json() as any;
     const content = extractAnthropicContent(json);
     if (!content) {
+      llmLog(`← EMPTY non-stream response  stop_reason=${String((json as any)?.stop_reason ?? "?")}`);
       throw wrapLLMError(new Error("LLM returned empty response"), errorCtx);
     }
+    llmLog(`← chars=${content.length}`);
     return {
       content,
       usage: {
@@ -709,8 +734,11 @@ async function chatCompletionViaCustomAnthropicCompatible(
       const parsed = parseSseEvents(buffer);
       buffer = parsed.rest;
       for (const event of parsed.events) {
-        if (!event.data) continue;
-        const json = JSON.parse(event.data);
+        if (!event.data || event.data === "[DONE]") continue;
+        let json: any;
+        try { json = JSON.parse(event.data); } catch { continue; }
+        const evType = String(json?.type ?? "?");
+        eventTypeCounts[evType] = (eventTypeCounts[evType] ?? 0) + 1;
         if (json.type === "message_start" && json.message?.usage) {
           usage.promptTokens = json.message.usage.input_tokens ?? usage.promptTokens;
         }
@@ -732,8 +760,10 @@ async function chatCompletionViaCustomAnthropicCompatible(
   }
 
   if (!content) {
+    llmLog(`← EMPTY stream response  events=${JSON.stringify(eventTypeCounts)}  buf-tail=${truncStr(buffer, 120)}`);
     throw wrapLLMError(new Error("LLM returned empty response from stream"), errorCtx);
   }
+  llmLog(`← chars=${content.length}  events=${JSON.stringify(eventTypeCounts)}`);
   if (!usage.totalTokens) {
     usage.totalTokens = usage.promptTokens + usage.completionTokens;
   }
@@ -770,11 +800,14 @@ async function chatCompletionViaCustomOpenAICompatible(
     const instructions = joinSystemPrompt(messages);
     if (instructions) payload.instructions = instructions;
 
-    const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, "")}/responses`, {
+    const responsesUrl = `${baseUrl.replace(/\/$/, "")}/responses`;
+    llmLog(`→ POST ${truncStr(responsesUrl, 100)}  model=${model}  msgs=${messages.length}  maxTok=${resolved.maxTokens}  stream=${client.stream}`);
+    const response = await fetchWithProxy(responsesUrl, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
     }, client.proxyUrl);
+    llmLog(`← ${response.status} ${response.statusText}`);
     if (!response.ok) {
       throw wrapLLMError(new Error(await readErrorResponse(response)), errorCtx);
     }
@@ -857,11 +890,20 @@ async function chatCompletionViaCustomOpenAICompatible(
     payload.stream_options = { include_usage: true };
   }
 
-  const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+  const chatUrl = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
+  llmLog(`→ POST ${truncStr(chatUrl, 100)}  model=${model}  msgs=${messages.length}  maxTok=${resolved.maxTokens}  stream=${client.stream}`);
+  const response = await fetchWithProxy(chatUrl, {
     method: "POST",
     headers,
     body: JSON.stringify(payload),
   }, client.proxyUrl);
+  llmLog(`← ${response.status} ${response.statusText}`);
+  if ((response.headers.get("content-type") ?? "").includes("text/html")) {
+    throw wrapLLMError(
+      new Error(`API 端点返回了 HTML 页面而非 API 响应，请检查 baseUrl 配置是否正确：${baseUrl}`),
+      errorCtx,
+    );
+  }
   if (!response.ok) {
     const detail = await readErrorResponse(response);
     if (allowSystemRoleFallback && hasSystemMessages(messages) && isSystemRoleUnsupportedErrorText(detail)) {
@@ -972,6 +1014,13 @@ export async function chatCompletion(
   const onStreamProgress = options?.onStreamProgress;
   const onTextDelta = options?.onTextDelta;
   const errorCtx = { baseUrl: client._piModel?.baseUrl ?? "(unknown)", model };
+
+  llmLog(
+    `${client.service ?? "?"}/${model}` +
+    `  fmt=${client.apiFormat}  stream=${client.stream}` +
+    `  msgs=${messages.length}  temp=${resolved.temperature}  maxTok=${resolved.maxTokens}` +
+    `  url=${truncStr(client._piModel?.baseUrl ?? "(builtin)", 60)}`,
+  );
 
   try {
     return await withTransientLLMRetry(
@@ -1203,7 +1252,7 @@ async function chatCompletionViaPiAi(
 
   const content = chunks.join("");
   if (!content) {
-    const diag = `usage=${inputTokens}+${outputTokens}`;
+    const diag = `service=${client.service}, model=${model}, stream=${client.stream}, usage=${inputTokens}+${outputTokens}`;
     console.warn(`[inkos] LLM 流式响应无文本内容 (${diag})`);
     throw new Error(`LLM returned empty response from stream (${diag})`);
   }
@@ -1272,6 +1321,12 @@ async function chatWithToolsViaPiAi(
     if (event.type === "error" && event.error.errorMessage) {
       throw new Error(event.error.errorMessage);
     }
+  }
+
+  if (!content && toolCalls.length === 0) {
+    throw new Error(
+      `LLM returned empty response from stream (service=${client.service}, model=${model}, stream=${client.stream})`,
+    );
   }
 
   return { content, toolCalls };

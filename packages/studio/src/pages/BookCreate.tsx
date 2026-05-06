@@ -1,15 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { BookCreationDraft } from "@actalk/inkos-core";
-import { BookPlus, CheckCircle2, RotateCcw, Sparkles } from "lucide-react";
 import { fetchJson, useApi } from "../hooks/use-api";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { useColors } from "../hooks/use-colors";
-import {
-  clearBookCreateSessionId,
-  getBookCreateSessionId,
-  setBookCreateSessionId,
-} from "./chat-page-state";
 
 interface Nav {
   toDashboard: () => void;
@@ -21,91 +15,41 @@ interface PlatformOption {
   readonly label: string;
 }
 
-export interface BookCreateFormState {
-  readonly title: string;
-  readonly genre: string;
-  readonly platform: string;
-  readonly targetChapters: string;
-  readonly chapterWordCount: string;
-  readonly brief: string;
-}
-
-export interface BookCreatePayload {
-  readonly title: string;
-  readonly genre: string;
-  readonly platform: string;
-  readonly language: "zh" | "en";
-  readonly targetChapters: number;
-  readonly chapterWordCount: number;
-  readonly blurb: string;
-}
-
 export interface DraftSummaryRow {
   readonly key: string;
   readonly label: string;
   readonly value: string;
 }
 
-interface InteractionSessionResponse {
-  readonly session?: {
-    readonly activeBookId?: string;
-    readonly creationDraft?: BookCreationDraft;
-  };
-  readonly activeBookId?: string;
-}
-
 interface AgentResponse {
   readonly response?: string;
   readonly error?: string;
   readonly session?: {
-    readonly sessionId?: string;
     readonly activeBookId?: string;
-    readonly creationDraft?: BookCreationDraft;
   };
 }
 
-interface SessionResponse {
-  readonly session?: {
-    readonly sessionId?: string;
-    readonly bookId?: string | null;
-  };
+interface BookSessionSummary {
+  readonly sessionId: string;
+  readonly bookId: string | null;
+  readonly title: string | null;
+  readonly messageCount: number;
+  readonly createdAt: number;
+  readonly updatedAt: number;
 }
 
-interface PlatformCopy {
-  readonly idleTitle: string;
-  readonly idleBody: string;
-  readonly formHeading: string;
-  readonly formHint: string;
-  readonly titleLabel: string;
-  readonly titlePlaceholder: string;
-  readonly genreLabel: string;
-  readonly genrePlaceholder: string;
-  readonly platformLabel: string;
-  readonly targetChaptersLabel: string;
-  readonly chapterWordCountLabel: string;
-  readonly briefLabel: string;
-  readonly briefPlaceholder: string;
-  readonly createBook: string;
-  readonly creatingBook: string;
-  readonly creationStatus: string;
-  readonly creationSteps: ReadonlyArray<string>;
-  readonly assistantHeading: string;
-  readonly assistantHint: string;
-  readonly applyDraft: string;
-  readonly promptLabel: string;
-  readonly promptPlaceholder: string;
-  readonly promptPlaceholderFollowup: string;
-  readonly submit: string;
-  readonly submitting: string;
-  readonly create: string;
-  readonly creating: string;
-  readonly discard: string;
-  readonly draftHeading: string;
-  readonly missingHeading: string;
-  readonly missingHint: string;
-  readonly syncedHint: string;
-  readonly helperTitle: string;
-  readonly helperBody: string;
+interface SessionsResponse {
+  readonly sessions: BookSessionSummary[];
+}
+
+interface ChatMessage {
+  readonly role: "user" | "assistant";
+  readonly content: string;
+}
+
+interface LoadedSession {
+  readonly sessionId: string;
+  readonly messages: ReadonlyArray<{ role: string; content: string }>;
 }
 
 const PLATFORMS_ZH: ReadonlyArray<PlatformOption> = [
@@ -122,80 +66,7 @@ const PLATFORMS_EN: ReadonlyArray<PlatformOption> = [
   { value: "other", label: "Other" },
 ];
 
-const PAGE_COPY: Record<"zh" | "en", PlatformCopy> = {
-  zh: {
-    idleTitle: "从一句模糊想法开始",
-    idleBody: "先填清楚书名、题材和故事核心，系统会生成基础设定并进入新书工作台。",
-    formHeading: "书籍基础信息",
-    formHint: "这些字段会直接进入建书流程。简介写得越具体，后续基础设定越稳定。",
-    titleLabel: "书名",
-    titlePlaceholder: "例如：夜港账本",
-    genreLabel: "题材 / 类型",
-    genrePlaceholder: "例如：都市悬疑、玄幻、科幻、女频情感",
-    platformLabel: "目标平台",
-    targetChaptersLabel: "目标章数",
-    chapterWordCountLabel: "每章字数",
-    briefLabel: "故事简介 / 核心设定",
-    briefPlaceholder: "写清世界观、主角、目标、核心冲突和第一阶段方向。例如：近未来港口城，主角是水货账房，想洗白却被旧账拖回港口旧案。",
-    createBook: "创建书籍",
-    creatingBook: "创建中…",
-    creationStatus: "正在创建书籍，完成后会自动进入工作台。",
-    creationSteps: ["写入书籍配置", "生成基础设定", "准备工作台"],
-    assistantHeading: "需要先让 AI 帮你补设定？",
-    assistantHint: "这块是辅助草案，不是必须步骤。已有草案可以一键套用到左侧表单。",
-    applyDraft: "套用草案",
-    promptLabel: "继续打磨这本书",
-    promptPlaceholder: "例如：我想写个港风商战悬疑，主角先做灰产再洗白。",
-    promptPlaceholderFollowup: "例如：世界观改成近未来港口城；女主不要太早出场；卷一先查账再砸场。",
-    submit: "更新草案",
-    submitting: "处理中…",
-    create: "按当前草案建书",
-    creating: "创建中…",
-    discard: "丢弃草案",
-    draftHeading: "当前基础设定草案",
-    missingHeading: "还缺这些关键信息",
-    missingHint: "这些字段未必都要一次填满，但缺得太多时不要急着建书。",
-    syncedHint: "这份草案和 TUI / Studio Chat 共享。",
-    helperTitle: "建议这样推进",
-    helperBody: "先定世界观和主角，再定核心冲突、简介和卷一方向。想看当前草案时，可以在 TUI 里用 /draft。",
-  },
-  en: {
-    idleTitle: "Start from a rough idea",
-    idleBody: "Fill in the title, genre, and story core first. InkOS will generate the foundation and open the new workspace.",
-    formHeading: "Book basics",
-    formHint: "These fields go straight into creation. A concrete brief gives the foundation generator better material.",
-    titleLabel: "Title",
-    titlePlaceholder: "Example: Ledger of the Night Port",
-    genreLabel: "Genre",
-    genrePlaceholder: "Example: mystery, urban fantasy, sci-fi, romance",
-    platformLabel: "Target platform",
-    targetChaptersLabel: "Target chapters",
-    chapterWordCountLabel: "Words per chapter",
-    briefLabel: "Story brief / core premise",
-    briefPlaceholder: "Include the world, protagonist, goal, core conflict, and first arc direction.",
-    createBook: "Create book",
-    creatingBook: "Creating…",
-    creationStatus: "Creating the book. The workspace will open automatically when it is ready.",
-    creationSteps: ["Saving config", "Generating foundation", "Preparing workspace"],
-    assistantHeading: "Want AI to shape the idea first?",
-    assistantHint: "This draft area is optional. If a draft looks useful, apply it to the form.",
-    applyDraft: "Apply draft",
-    promptLabel: "Refine this book",
-    promptPlaceholder: "Example: I want a harbor-noir business thriller about a fixer trying to go legit.",
-    promptPlaceholderFollowup: "Example: move the world to a near-future port city; delay the heroine; make volume one about chasing ledgers first.",
-    submit: "Update draft",
-    submitting: "Working…",
-    create: "Create book from draft",
-    creating: "Creating…",
-    discard: "Discard draft",
-    draftHeading: "Current foundation draft",
-    missingHeading: "Still missing",
-    missingHint: "You do not need every field immediately, but do not create the book while the foundation is still vague.",
-    syncedHint: "This draft is shared with TUI and Studio Chat.",
-    helperTitle: "Recommended flow",
-    helperBody: "Lock the world and protagonist first, then settle the conflict, blurb, and volume-one direction. In TUI, use /draft to inspect the same draft.",
-  },
-};
+// -- Pure utility functions (exported for tests) --
 
 export function pickValidValue(current: string, available: ReadonlyArray<string>): string {
   if (current && available.includes(current)) {
@@ -208,54 +79,8 @@ export function defaultChapterWordsForLanguage(language: "zh" | "en"): string {
   return language === "en" ? "2000" : "3000";
 }
 
-export function defaultBookCreateForm(language: "zh" | "en"): BookCreateFormState {
-  return {
-    title: "",
-    genre: "",
-    platform: platformOptionsForLanguage(language)[0]?.value ?? "other",
-    targetChapters: "200",
-    chapterWordCount: defaultChapterWordsForLanguage(language),
-    brief: "",
-  };
-}
-
 export function platformOptionsForLanguage(language: "zh" | "en"): ReadonlyArray<PlatformOption> {
   return language === "en" ? PLATFORMS_EN : PLATFORMS_ZH;
-}
-
-function parsePositiveInteger(value: string): number | null {
-  const parsed = Number.parseInt(value.trim(), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-export function isBookCreateFormReady(form: BookCreateFormState): boolean {
-  return Boolean(
-    form.title.trim()
-      && form.genre.trim()
-      && form.brief.trim()
-      && parsePositiveInteger(form.targetChapters)
-      && parsePositiveInteger(form.chapterWordCount),
-  );
-}
-
-export function buildBookCreatePayload(
-  form: BookCreateFormState,
-  language: "zh" | "en",
-): BookCreatePayload {
-  const targetChapters = parsePositiveInteger(form.targetChapters);
-  const chapterWordCount = parsePositiveInteger(form.chapterWordCount);
-  if (!targetChapters || !chapterWordCount || !isBookCreateFormReady(form)) {
-    throw new Error(language === "zh" ? "请先补齐建书表单。" : "Complete the book creation form first.");
-  }
-  return {
-    title: form.title.trim(),
-    genre: form.genre.trim(),
-    platform: form.platform,
-    language,
-    targetChapters,
-    chapterWordCount,
-    blurb: form.brief.trim(),
-  };
 }
 
 export function resolveDraftInstruction(input: string, hasDraft: boolean): string {
@@ -318,85 +143,6 @@ interface WaitForBookReadyOptions {
 
 const DEFAULT_BOOK_READY_MAX_ATTEMPTS = 120;
 const DEFAULT_BOOK_READY_DELAY_MS = 250;
-const CREATION_DRAFT_SYNC_INTERVAL_MS = 2500;
-
-interface BookCreateSessionOptions {
-  readonly fetchSession?: (sessionId: string) => Promise<SessionResponse>;
-  readonly createSession?: () => Promise<SessionResponse>;
-  readonly getStoredSessionId?: () => string | null;
-  readonly setStoredSessionId?: (sessionId: string) => void;
-  readonly clearStoredSessionId?: () => void;
-}
-
-let pendingDefaultBookCreateSessionId: Promise<string> | null = null;
-
-function readSessionId(response: SessionResponse): string | null {
-  const sessionId = response.session?.sessionId?.trim();
-  return sessionId || null;
-}
-
-export function buildBookCreateAgentRequest(
-  instruction: string,
-  sessionId: string,
-): { instruction: string; sessionId: string } {
-  const trimmedSessionId = sessionId.trim();
-  if (!trimmedSessionId) {
-    throw new Error("Book create session is not ready.");
-  }
-  return { instruction, sessionId: trimmedSessionId };
-}
-
-export async function ensureBookCreateSessionId(
-  options: BookCreateSessionOptions = {},
-): Promise<string> {
-  const usesDefaultDeps = Object.keys(options).length === 0;
-  if (usesDefaultDeps && pendingDefaultBookCreateSessionId) {
-    return pendingDefaultBookCreateSessionId;
-  }
-
-  const fetchSession = options.fetchSession
-    ?? ((sessionId: string) => fetchJson<SessionResponse>(`/sessions/${encodeURIComponent(sessionId)}`));
-  const createSession = options.createSession
-    ?? (() => fetchJson<SessionResponse>("/sessions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bookId: null }),
-    }));
-  const getStoredSessionId = options.getStoredSessionId ?? getBookCreateSessionId;
-  const setStoredSessionId = options.setStoredSessionId ?? setBookCreateSessionId;
-  const clearStoredSessionId = options.clearStoredSessionId ?? clearBookCreateSessionId;
-
-  const resolveSessionId = async (): Promise<string> => {
-    const storedSessionId = getStoredSessionId()?.trim();
-    if (storedSessionId) {
-      try {
-        const existing = await fetchSession(storedSessionId);
-        if (existing.session?.bookId === null) {
-          return storedSessionId;
-        }
-      } catch {
-        // Stale localStorage entry; fall through and create a fresh orphan session.
-      }
-      clearStoredSessionId();
-    }
-
-    const createdSessionId = readSessionId(await createSession());
-    if (!createdSessionId) {
-      throw new Error("Failed to create book session");
-    }
-    setStoredSessionId(createdSessionId);
-    return createdSessionId;
-  };
-
-  if (!usesDefaultDeps) {
-    return resolveSessionId();
-  }
-
-  pendingDefaultBookCreateSessionId = resolveSessionId().finally(() => {
-    pendingDefaultBookCreateSessionId = null;
-  });
-  return pendingDefaultBookCreateSessionId;
-}
 
 export async function waitForBookReady(
   bookId: string,
@@ -447,465 +193,342 @@ export async function waitForBookReady(
   throw lastError instanceof Error ? lastError : new Error(`Book "${bookId}" was not ready`);
 }
 
+// -- Component --
+
 export function BookCreate({ nav, theme, t }: { nav: Nav; theme: Theme; t: TFunction }) {
   const c = useColors(theme);
   const { data: project } = useApi<{ language: string }>("/project");
   const projectLang = (project?.language ?? "zh") as "zh" | "en";
-  const copy = PAGE_COPY[projectLang];
-  const platformChoices = platformOptionsForLanguage(projectLang);
 
-  const [draft, setDraft] = useState<BookCreationDraft | undefined>();
-  const [form, setForm] = useState<BookCreateFormState>(() => defaultBookCreateForm(projectLang));
+  const [view, setView] = useState<"list" | "chat">("list");
+  const [sessions, setSessions] = useState<BookSessionSummary[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(true);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [loadingDraft, setLoadingDraft] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [bookCreateSessionId, setBookCreateSessionIdState] = useState<string | null>(null);
 
-  const bookSessionIdRef = useRef<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const ensureBookSession = async (): Promise<string> => {
-    if (bookSessionIdRef.current) {
-      return bookSessionIdRef.current;
+  const loadSessions = useCallback(async () => {
+    setLoadingSessions(true);
+    try {
+      const data = await fetchJson<SessionsResponse>("/sessions?bookId=null");
+      setSessions(data.sessions ?? []);
+    } catch {
+      setSessions([]);
+    } finally {
+      setLoadingSessions(false);
     }
-    const newSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    await fetchJson<unknown>("/sessions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: newSessionId, bookId: null }),
-    });
-    bookSessionIdRef.current = newSessionId;
-    return newSessionId;
-  };
-
-  const summaryRows = useMemo(
-    () => (draft ? buildCreationDraftSummary(draft, projectLang) : []),
-    [draft, projectLang],
-  );
-  const canSubmitForm = isBookCreateFormReady(form);
-
-  useEffect(() => {
-    setForm((current) => ({
-      ...current,
-      platform: pickValidValue(
-        current.platform,
-        platformOptionsForLanguage(projectLang).map((option) => option.value),
-      ),
-      chapterWordCount: current.chapterWordCount || defaultChapterWordsForLanguage(projectLang),
-      targetChapters: current.targetChapters || "200",
-    }));
-  }, [projectLang]);
-
-  const updateForm = (patch: Partial<BookCreateFormState>) => {
-    setForm((current) => ({ ...current, ...patch }));
-  };
-
-  const applyDraftToForm = () => {
-    if (!draft) {
-      return;
-    }
-    const draftBrief = [
-      draft.blurb,
-      draft.worldPremise,
-      draft.protagonist,
-      draft.conflictCore,
-      draft.volumeOutline,
-    ].filter((part): part is string => Boolean(part?.trim())).join("\n\n");
-    const platformValues = platformChoices.map((option) => option.value);
-    setForm((current) => ({
-      title: draft.title?.trim() || current.title,
-      genre: draft.genre?.trim() || current.genre,
-      platform: pickValidValue(draft.platform ?? current.platform, platformValues),
-      targetChapters: draft.targetChapters ? String(draft.targetChapters) : current.targetChapters,
-      chapterWordCount: draft.chapterWordCount ? String(draft.chapterWordCount) : current.chapterWordCount,
-      brief: draftBrief || current.brief,
-    }));
-  };
-
-  const refreshDraft = async (): Promise<BookCreationDraft | undefined> => {
-    const data = await fetchJson<InteractionSessionResponse>("/interaction/session");
-    const nextDraft = data.session?.creationDraft;
-    setDraft(nextDraft);
-    return nextDraft;
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoadingDraft(true);
-    void Promise.all([
-      ensureBookCreateSessionId(),
-      refreshDraft(),
-    ])
-      .then(([sessionId]) => {
-        if (!cancelled) {
-          setBookCreateSessionIdState(sessionId);
-        }
-      })
-      .catch((cause) => {
-        if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : String(cause));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoadingDraft(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   useEffect(() => {
-    if (submitting || creating) {
-      return;
+    void loadSessions();
+  }, [loadSessions]);
+
+  useEffect(() => {
+    if (view === "chat") {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
+  }, [messages, view]);
 
-    const timer = setInterval(() => {
-      void refreshDraft().catch(() => undefined);
-    }, CREATION_DRAFT_SYNC_INTERVAL_MS);
-
-    return () => {
-      clearInterval(timer);
-    };
-  }, [submitting, creating]);
-
-  const runAgentInstruction = async (instruction: string): Promise<AgentResponse> => {
-    const sessionId = bookCreateSessionId ?? await ensureBookCreateSessionId();
-    if (!bookCreateSessionId) {
-      setBookCreateSessionIdState(sessionId);
+  const enterChat = async (sessionId: string) => {
+    setActiveSessionId(sessionId);
+    setMessages([]);
+    setError(null);
+    setInput("");
+    try {
+      const data = await fetchJson<{ session: LoadedSession }>(`/sessions/${sessionId}`);
+      const loaded = (data.session?.messages ?? [])
+        .filter((m): m is ChatMessage => m.role === "user" || m.role === "assistant");
+      setMessages(loaded);
+    } catch {
+      // Start with empty history if load fails
     }
-    return fetchJson<AgentResponse>("/agent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildBookCreateAgentRequest(instruction, sessionId)),
+    setView("chat");
+  };
+
+  const handleNewIdea = async () => {
+    const newSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      await fetchJson<unknown>("/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: newSessionId, bookId: null }),
+      });
+    } catch {
+      // Session creation failure is non-fatal; agent will handle missing session
+    }
+    setActiveSessionId(newSessionId);
+    setMessages([]);
+    setInput("");
+    setError(null);
+    setView("chat");
+  };
+
+  const handleDeleteSession = async (sessionId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    try {
+      await fetchJson<unknown>(`/sessions/${sessionId}`, { method: "DELETE" });
+      setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  const handleBack = () => {
+    setView("list");
+    setActiveSessionId(null);
+    setMessages([]);
+    setError(null);
+    void loadSessions();
+  };
+
+  const handleSend = async () => {
+    if (!input.trim() || !activeSessionId || submitting || creating) return;
+
+    const userMessage = input.trim();
+    setInput("");
+    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const data = await fetchJson<AgentResponse>("/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction: userMessage, sessionId: activeSessionId }),
+      });
+
+      if (data.response) {
+        setMessages((prev) => [...prev, { role: "assistant", content: data.response! }]);
+      }
+
+      if (data.session?.activeBookId) {
+        setCreating(true);
+        setSubmitting(false);
+        try {
+          await waitForBookReady(data.session.activeBookId);
+          nav.toBook(data.session.activeBookId);
+        } finally {
+          setCreating(false);
+        }
+        return;
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      // Roll back the optimistically added user message
+      setMessages((prev) => prev.slice(0, -1));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      void handleSend();
+    }
+  };
+
+  const formatDate = (ts: number) => {
+    return new Date(ts).toLocaleString(projectLang === "zh" ? "zh-CN" : "en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
-  const handleDraftSubmit = async () => {
-    const instruction = resolveDraftInstruction(input, Boolean(draft));
-    if (!instruction) {
-      return;
-    }
+  // -- Chat view --
+  if (view === "chat" && activeSessionId) {
+    return (
+      <div className="max-w-3xl mx-auto flex flex-col h-full space-y-0">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+          <button onClick={nav.toDashboard} className={c.link}>{t("bread.books")}</button>
+          <span className="text-border">/</span>
+          <button onClick={handleBack} className={c.link}>{t("bread.newBook")}</button>
+          <span className="text-border">/</span>
+          <span>{projectLang === "zh" ? "对话" : "Chat"}</span>
+        </div>
 
-    setSubmitting(true);
-    setError(null);
-    try {
-      const data = await runAgentInstruction(instruction);
-      const createdBookId = data.session?.activeBookId;
-      if (createdBookId) {
-        setStatus(data.response ?? null);
-        setDraft(undefined);
-        await waitForBookReady(createdBookId);
-        nav.toBook(createdBookId);
-        return;
-      }
-      setInput("");
-      setStatus(data.response ?? null);
-      setDraft(data.session?.creationDraft);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setSubmitting(false);
-    }
-  };
+        <div className="flex items-center gap-3 mb-6">
+          <button
+            onClick={handleBack}
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ← {projectLang === "zh" ? "返回列表" : "Back to list"}
+          </button>
+        </div>
 
-  const handleFormCreate = async () => {
-    if (!canSubmitForm) {
-      return;
-    }
+        <div className="flex-1 space-y-4 min-h-0 overflow-y-auto pb-4">
+          {messages.length === 0 && !submitting && (
+            <div className="rounded-xl border border-dashed border-border/70 bg-background/50 px-5 py-8 text-center">
+              <div className="font-medium text-foreground">
+                {projectLang === "zh" ? "从一句话开始" : "Start with a rough idea"}
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground leading-7">
+                {projectLang === "zh"
+                  ? "描述题材、世界观、主角或核心冲突，助手会帮你逐步完善。"
+                  : "Describe your genre, world, protagonist, or conflict — the assistant will guide you from there."}
+              </p>
+            </div>
+          )}
 
-    setCreating(true);
-    setError(null);
-    setStatus(copy.creationStatus);
-    try {
-      const payload = buildBookCreatePayload(form, projectLang);
-      const data = await fetchJson<{ status?: string; bookId?: string }>("/books/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!data.bookId) {
-        throw new Error(projectLang === "zh" ? "创建请求没有返回书籍 ID。" : "Create request did not return a book id.");
-      }
-      await waitForBookReady(data.bookId);
-      nav.toBook(data.bookId);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      setStatus(null);
-    } finally {
-      setCreating(false);
-    }
-  };
+          {messages.map((msg, i) => (
+            <div
+              key={i}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-7 whitespace-pre-wrap ${
+                  msg.role === "user"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card border border-border/60 text-foreground"
+                }`}
+              >
+                {msg.content}
+              </div>
+            </div>
+          ))}
 
-  const handleCreate = async () => {
-    if (!canCreateFromDraft(draft)) {
-      return;
-    }
+          {(submitting || creating) && (
+            <div className="flex justify-start">
+              <div className="rounded-2xl bg-card border border-border/60 px-4 py-3 text-sm text-muted-foreground">
+                {creating
+                  ? (projectLang === "zh" ? "创建书籍中…" : "Creating book…")
+                  : (projectLang === "zh" ? "思考中…" : "Thinking…")}
+              </div>
+            </div>
+          )}
 
-    setCreating(true);
-    setError(null);
-    try {
-      const data = await runAgentInstruction("/create");
-      const bookId = data.session?.activeBookId;
-      if (!bookId) {
-        throw new Error(projectLang === "zh" ? "创建完成后没有返回书籍 ID。" : "Create succeeded but no book id was returned.");
-      }
-      setStatus(data.response ?? null);
-      setDraft(undefined);
-      await waitForBookReady(bookId);
-      nav.toBook(bookId);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setCreating(false);
-    }
-  };
+          <div ref={messagesEndRef} />
+        </div>
 
-  const handleDiscard = async () => {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const data = await runAgentInstruction("/discard");
-      setStatus(data.response ?? null);
-      setDraft(undefined);
-      setInput("");
-      await refreshDraft().catch(() => undefined);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setSubmitting(false);
-    }
-  };
+        {error && (
+          <div className={`border ${c.error} rounded-md px-4 py-3 text-sm mt-2`}>
+            {error}
+          </div>
+        )}
 
+        <div className="mt-4 rounded-2xl border border-border/60 bg-card/70 p-4 space-y-3">
+          <textarea
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={handleKeyDown}
+            rows={4}
+            disabled={submitting || creating}
+            className={`w-full ${c.input} rounded-xl px-4 py-3 focus:outline-none text-sm leading-7 resize-none disabled:opacity-50`}
+            placeholder={
+              projectLang === "zh"
+                ? "描述你的想法…（Ctrl+Enter 发送）"
+                : "Describe your idea… (Ctrl+Enter to send)"
+            }
+          />
+          <div className="flex justify-end">
+            <button
+              onClick={() => void handleSend()}
+              disabled={submitting || creating || !input.trim()}
+              className={`px-4 py-2 ${c.btnPrimary} rounded-md disabled:opacity-50 font-medium text-sm`}
+            >
+              {submitting
+                ? (projectLang === "zh" ? "处理中…" : "Working…")
+                : (projectLang === "zh" ? "发送" : "Send")}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // -- List view --
   return (
-    <div className="max-w-5xl mx-auto space-y-8">
+    <div className="max-w-4xl mx-auto space-y-8">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <button onClick={nav.toDashboard} className={c.link}>{t("bread.books")}</button>
         <span className="text-border">/</span>
         <span>{t("bread.newBook")}</span>
       </div>
 
-      <div className="space-y-3">
-        <h1 className="font-serif text-4xl">{t("create.title")}</h1>
-        <p className="text-sm text-muted-foreground leading-7 max-w-2xl">{copy.idleBody}</p>
+      <div className="flex items-start justify-between">
+        <div className="space-y-2">
+          <h1 className="font-serif text-3xl">{t("create.title")}</h1>
+          <p className="text-sm text-muted-foreground leading-7">
+            {projectLang === "zh"
+              ? "每个想法独立保存，可随时继续或放弃。"
+              : "Each idea is saved independently — continue or discard any time."}
+          </p>
+        </div>
+        <button
+          onClick={() => void handleNewIdea()}
+          className={`px-4 py-2 ${c.btnPrimary} rounded-md font-medium text-sm shrink-0 mt-1`}
+        >
+          {projectLang === "zh" ? "+ 新想法" : "+ New idea"}
+        </button>
       </div>
 
       {error && (
-        <div className={`border ${c.error} rounded-md px-4 py-3`}>
+        <div className={`border ${c.error} rounded-md px-4 py-3 text-sm`}>
           {error}
         </div>
       )}
 
-      {status && (
-        <div className="border border-primary/20 bg-primary/5 rounded-md px-4 py-3 text-sm text-primary">
-          {status}
+      {loadingSessions ? (
+        <div className="text-sm text-muted-foreground">
+          {projectLang === "zh" ? "加载中…" : "Loading…"}
+        </div>
+      ) : sessions.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border/70 bg-background/50 px-6 py-12 text-center">
+          <div className="font-medium text-foreground">
+            {projectLang === "zh" ? "还没有任何想法" : "No ideas yet"}
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {projectLang === "zh"
+              ? "点击「+ 新想法」开始创作你的第一本书。"
+              : "Click the button above to start building your first book."}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {sessions.map((session) => (
+            <div
+              key={session.sessionId}
+              className="rounded-2xl border border-border/60 bg-card/70 px-5 py-4 flex items-center justify-between gap-4 cursor-pointer hover:border-border transition-colors"
+              onClick={() => void enterChat(session.sessionId)}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="font-medium truncate">
+                  {session.title ?? (projectLang === "zh" ? "未命名想法" : "Untitled idea")}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {formatDate(session.updatedAt)}
+                  {session.messageCount > 0 && (
+                    <span className="ml-2">
+                      · {session.messageCount}{projectLang === "zh" ? " 条消息" : " messages"}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => void enterChat(session.sessionId)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md ${c.btnPrimary}`}
+                >
+                  {projectLang === "zh" ? "继续" : "Continue"}
+                </button>
+                <button
+                  onClick={(e) => void handleDeleteSession(session.sessionId, e)}
+                  className="px-3 py-1.5 text-xs font-medium rounded-md border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors"
+                >
+                  {projectLang === "zh" ? "删除" : "Delete"}
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]">
-        <section className="rounded-lg border border-border/60 bg-card/80 p-5 space-y-5">
-          <div className="space-y-1">
-            <div className="text-[11px] uppercase text-muted-foreground font-bold">
-              {copy.formHeading}
-            </div>
-            <p className="text-xs text-muted-foreground leading-6">{copy.formHint}</p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="space-y-2">
-              <span className="text-xs font-medium text-muted-foreground">{copy.titleLabel}</span>
-              <input
-                value={form.title}
-                onChange={(event) => updateForm({ title: event.target.value })}
-                className={`w-full ${c.input} rounded-md px-3 py-2.5 focus:outline-none text-sm`}
-                placeholder={copy.titlePlaceholder}
-              />
-            </label>
-            <label className="space-y-2">
-              <span className="text-xs font-medium text-muted-foreground">{copy.genreLabel}</span>
-              <input
-                value={form.genre}
-                onChange={(event) => updateForm({ genre: event.target.value })}
-                className={`w-full ${c.input} rounded-md px-3 py-2.5 focus:outline-none text-sm`}
-                placeholder={copy.genrePlaceholder}
-              />
-            </label>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3">
-            <label className="space-y-2">
-              <span className="text-xs font-medium text-muted-foreground">{copy.platformLabel}</span>
-              <select
-                value={form.platform}
-                onChange={(event) => updateForm({ platform: event.target.value })}
-                className={`w-full ${c.input} rounded-md px-3 py-2.5 focus:outline-none text-sm bg-background`}
-              >
-                {platformChoices.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-2">
-              <span className="text-xs font-medium text-muted-foreground">{copy.targetChaptersLabel}</span>
-              <input
-                type="number"
-                min={1}
-                value={form.targetChapters}
-                onChange={(event) => updateForm({ targetChapters: event.target.value })}
-                className={`w-full ${c.input} rounded-md px-3 py-2.5 focus:outline-none text-sm`}
-              />
-            </label>
-            <label className="space-y-2">
-              <span className="text-xs font-medium text-muted-foreground">{copy.chapterWordCountLabel}</span>
-              <input
-                type="number"
-                min={1000}
-                value={form.chapterWordCount}
-                onChange={(event) => updateForm({ chapterWordCount: event.target.value })}
-                className={`w-full ${c.input} rounded-md px-3 py-2.5 focus:outline-none text-sm`}
-              />
-            </label>
-          </div>
-
-          <label className="space-y-2 block">
-            <span className="text-xs font-medium text-muted-foreground">{copy.briefLabel}</span>
-            <textarea
-              value={form.brief}
-              onChange={(event) => updateForm({ brief: event.target.value })}
-              rows={9}
-              className={`w-full ${c.input} rounded-md px-3 py-3 focus:outline-none text-sm leading-7 resize-y`}
-              placeholder={copy.briefPlaceholder}
-            />
-          </label>
-
-          {creating && (
-            <div className="grid gap-2 sm:grid-cols-3">
-              {copy.creationSteps.map((step) => (
-                <div key={step} className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">
-                  <CheckCircle2 size={14} />
-                  <span>{step}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <button
-            onClick={handleFormCreate}
-            disabled={!canSubmitForm || creating || submitting}
-            className={`inline-flex items-center gap-2 px-5 py-3 ${c.btnPrimary} rounded-md disabled:opacity-50 font-medium text-sm`}
-          >
-            <BookPlus size={16} />
-            {creating ? copy.creatingBook : copy.createBook}
-          </button>
-        </section>
-
-        <aside className="space-y-4">
-          <section className="rounded-lg border border-border/60 bg-card/80 p-5 space-y-4">
-            <div className="space-y-1">
-              <div className="text-[11px] uppercase text-muted-foreground font-bold">
-                {copy.assistantHeading}
-              </div>
-              <p className="text-xs text-muted-foreground leading-6">{copy.assistantHint}</p>
-            </div>
-
-            <textarea
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              rows={7}
-              className={`w-full ${c.input} rounded-md px-3 py-3 focus:outline-none text-sm leading-7 resize-y`}
-              placeholder={draft ? copy.promptPlaceholderFollowup : copy.promptPlaceholder}
-            />
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={handleDraftSubmit}
-                disabled={submitting || creating || !input.trim()}
-                className={`inline-flex items-center gap-2 px-3 py-2 ${c.btnPrimary} rounded-md disabled:opacity-50 font-medium text-xs`}
-              >
-                <Sparkles size={14} />
-                {submitting ? copy.submitting : copy.submit}
-              </button>
-              <button
-                onClick={handleDiscard}
-                disabled={!draft || submitting || creating}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 disabled:opacity-50 font-medium text-xs"
-              >
-                <RotateCcw size={14} />
-                {copy.discard}
-              </button>
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-border/60 bg-card/80 p-5 space-y-4">
-            <div className="space-y-1">
-              <div className="text-[11px] uppercase text-muted-foreground font-bold">
-                {copy.draftHeading}
-              </div>
-              <p className="text-xs text-muted-foreground leading-6">{copy.syncedHint}</p>
-            </div>
-
-            {loadingDraft ? (
-              <div className="text-sm text-muted-foreground">{projectLang === "zh" ? "读取草案中…" : "Loading draft…"}</div>
-            ) : draft ? (
-              <div className="space-y-4">
-                {summaryRows.length > 0 ? (
-                  <div className="space-y-2">
-                    {summaryRows.map((row) => (
-                      <div key={row.key} className="rounded-md border border-border/50 bg-background/70 px-3 py-2">
-                        <div className="text-[10px] uppercase text-muted-foreground font-semibold">{row.label}</div>
-                        <div className="mt-1 text-sm leading-6 whitespace-pre-wrap">{row.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-
-                {draft.missingFields.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="text-xs font-medium text-foreground">{copy.missingHeading}</div>
-                    <div className="flex flex-wrap gap-2">
-                      {draft.missingFields.map((field) => (
-                        <span
-                          key={field}
-                          className="rounded-md border border-border/70 bg-secondary/50 px-2 py-1 text-xs text-muted-foreground"
-                        >
-                          {field}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground leading-6">{copy.missingHint}</p>
-                  </div>
-                ) : null}
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={applyDraftToForm}
-                    className="px-3 py-2 rounded-md border border-border bg-secondary text-secondary-foreground font-medium text-xs"
-                  >
-                    {copy.applyDraft}
-                  </button>
-                  <button
-                    onClick={handleCreate}
-                    disabled={!canCreateFromDraft(draft) || creating || submitting}
-                    className="px-3 py-2 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 disabled:opacity-50 font-medium text-xs"
-                  >
-                    {creating ? copy.creating : copy.create}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-md border border-dashed border-border/70 bg-background/50 px-4 py-5">
-                <div className="font-medium">{copy.idleTitle}</div>
-                <p className="mt-2 text-sm text-muted-foreground leading-7">
-                  {copy.helperBody}
-                </p>
-              </div>
-            )}
-          </section>
-        </aside>
-      </div>
     </div>
   );
 }

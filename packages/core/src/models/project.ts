@@ -95,6 +95,9 @@ export const AgentLLMOverrideSchema = z.object({
   baseUrl: z.string().url().optional(),
   apiKeyEnv: z.string().optional(),
   stream: z.boolean().optional(),
+  // Service-based routing: resolved at runtime to the correct baseUrl + apiKey.
+  // Takes precedence over baseUrl when both are absent.
+  service: z.string().optional(),
 });
 
 export type AgentLLMOverride = z.infer<typeof AgentLLMOverrideSchema>;

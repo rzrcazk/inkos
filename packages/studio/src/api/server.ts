@@ -884,6 +884,15 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         }
       : sseSink;
     const logger = createLogger({ tag: "studio", sinks: [scopedSseSink, consoleSink] });
+
+    // Pre-resolve API keys for all configured services so resolveOverride can use them
+    // for service-based modelOverrides (e.g. { model: "...", service: "custom:sub2api-claude-pro" }).
+    const secrets = await loadSecrets(root);
+    const serviceApiKeys: Record<string, string> = {};
+    for (const [svcKey, svcData] of Object.entries(secrets.services)) {
+      if (svcData?.apiKey) serviceApiKeys[svcKey] = svcData.apiKey;
+    }
+
     return {
       client: overrides?.client ?? createLLMClient(currentConfig.llm),
       model: overrides?.model ?? currentConfig.llm.model,
@@ -891,6 +900,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       defaultLLMConfig: currentConfig.llm,
       foundationReviewRetries: currentConfig.foundation?.reviewRetries ?? 2,
       modelOverrides: currentConfig.modelOverrides,
+      serviceApiKeys,
       notifyChannels: currentConfig.notify,
       logger,
       onStreamProgress: (progress) => {
@@ -2041,7 +2051,33 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       }
 
       if (!resolvedModel) {
-        // 4. Fall back to the project-configured service/model (createLLMClient)
+        // 4. Try first connected service from secrets
+        const secrets = await loadSecrets(root);
+        for (const [svcName, svcData] of Object.entries(secrets.services)) {
+          if (svcData?.apiKey) {
+            try {
+              const models = await listModelsForService(svcName, svcData.apiKey);
+              const textModels = filterTextChatModels(models);
+              if (textModels.length > 0) {
+                const configuredEntry = await resolveConfiguredServiceEntry(root, svcName);
+                const resolved = await resolveServiceModel(
+                  svcName,
+                  textModels[0].id,
+                  root,
+                  await resolveConfiguredServiceBaseUrl(root, svcName),
+                  configuredEntry?.apiFormat,
+                );
+                resolvedModel = resolved.model;
+                resolvedApiKey = resolved.apiKey;
+                break;
+              }
+            } catch { /* try next */ }
+          }
+        }
+      }
+
+      if (!resolvedModel) {
+        // 5. Legacy fallback: use createLLMClient
         resolvedModel = client._piModel
           ? client._piModel
           : { provider: config.llm.provider ?? "anthropic", modelId: config.llm.model } as any;

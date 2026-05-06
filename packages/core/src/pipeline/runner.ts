@@ -40,6 +40,7 @@ import {
 } from "../utils/outline-paths.js";
 import { loadNarrativeMemorySeed, loadSnapshotCurrentStateFacts } from "../state/runtime-state-store.js";
 import { rewriteStructuredStateFromMarkdown } from "../state/state-bootstrap.js";
+import { resolveServicePreset, resolveServiceProviderFamily } from "../llm/service-presets.js";
 import { readFile, readdir, writeFile, mkdir, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -228,6 +229,9 @@ export interface PipelineConfig {
   readonly radarSources?: ReadonlyArray<RadarSource>;
   readonly externalContext?: string;
   readonly modelOverrides?: Record<string, string | AgentLLMOverride>;
+  // Pre-resolved API keys keyed by service ID (e.g. "bailianCodingPlan", "custom:sub2api-claude-pro").
+  // Used by resolveOverride when an AgentLLMOverride references a service instead of a raw baseUrl.
+  readonly serviceApiKeys?: Record<string, string>;
   readonly inputGovernanceMode?: InputGovernanceMode;
   readonly logger?: Logger;
   readonly onStreamProgress?: OnStreamProgress;
@@ -529,34 +533,66 @@ export class PipelineRunner {
     if (typeof override === "string") {
       return { model: override, client: this.config.client };
     }
-    // Full override — needs its own client if baseUrl differs
-    if (!override.baseUrl) {
+
+    const base = this.config.defaultLLMConfig;
+
+    // Resolve baseUrl: explicit > service lookup > no override
+    const serviceId = override.service;
+    let effectiveBaseUrl = override.baseUrl;
+    if (!effectiveBaseUrl && serviceId) {
+      // Look up baseUrl from the services array in defaultLLMConfig (for custom services)
+      const serviceEntry = base?.services?.find(
+        (e) => (e.service === "custom" ? `custom:${e.name ?? "Custom"}` : e.service) === serviceId,
+      );
+      effectiveBaseUrl = serviceEntry?.baseUrl ?? resolveServicePreset(serviceId)?.baseUrl;
+    }
+    process.stderr.write(`[LLM] resolveOverride agent=${agentName} svc=${serviceId ?? "(none)"} url=${effectiveBaseUrl ?? "(fallback)"} servicesLen=${base?.services?.length ?? 0}\n`);
+
+    if (!effectiveBaseUrl) {
+      // No baseUrl resolvable — reuse the default client but with the overridden model
       return { model: override.model, client: this.config.client };
     }
-    const base = this.config.defaultLLMConfig;
-    const provider = override.provider ?? base?.provider ?? "custom";
+
+    // Determine provider and apiFormat from service when not explicitly set
+    const serviceEntry = serviceId
+      ? base?.services?.find(
+          (e) => (e.service === "custom" ? `custom:${e.name ?? "Custom"}` : e.service) === serviceId,
+        )
+      : undefined;
+    const bareServiceId = serviceId?.startsWith("custom:") ? "custom" : (serviceId ?? "custom");
+    const presetApi = serviceId ? resolveServicePreset(bareServiceId)?.api : undefined;
+    const apiFormat: "chat" | "responses" | "anthropic" = serviceEntry?.apiFormat
+      ?? (presetApi === "openai-responses" ? "responses" : presetApi?.startsWith("anthropic") ? "anthropic" : undefined)
+      ?? base?.apiFormat
+      ?? "chat";
+    // apiFormat drives provider: anthropic-format services must use provider "anthropic" so that
+    // shouldUseNativeCustomTransport routes to chatCompletionViaCustomAnthropicCompatible.
+    const provider = override.provider
+      ?? (apiFormat === "anthropic" ? "anthropic" : undefined)
+      ?? (serviceId ? resolveServiceProviderFamily(bareServiceId) : undefined)
+      ?? base?.provider
+      ?? "custom";
+
+    // Resolve apiKey: explicit env > pre-resolved service key > base key
     const apiKeySource = override.apiKeyEnv
       ? `env:${override.apiKeyEnv}`
-      : `base:${base?.apiKey ?? ""}`;
+      : serviceId
+        ? `svc:${this.config.serviceApiKeys?.[serviceId] ?? ""}`
+        : `base:${base?.apiKey ?? ""}`;
     const stream = override.stream ?? base?.stream ?? true;
-    const apiFormat = base?.apiFormat ?? "chat";
-    const cacheKey = [
-      provider,
-      override.baseUrl,
-      apiKeySource,
-      `stream:${stream}`,
-      `format:${apiFormat}`,
-    ].join("|");
+    const cacheKey = [provider, effectiveBaseUrl, apiKeySource, `stream:${stream}`, `format:${apiFormat}`].join("|");
     let client = this.agentClients.get(cacheKey);
     if (!client) {
       const apiKey = override.apiKeyEnv
         ? process.env[override.apiKeyEnv] ?? ""
-        : base?.apiKey ?? "";
+        : serviceId
+          ? (this.config.serviceApiKeys?.[serviceId] ?? base?.apiKey ?? "")
+          : (base?.apiKey ?? "");
       client = createLLMClient({
         provider,
-        service: base?.service ?? "custom",
+        service: serviceId?.startsWith("custom:") ? "custom" : (serviceId ?? base?.service ?? "custom"),
         configSource: base?.configSource ?? "env",
-        baseUrl: override.baseUrl,
+        baseUrl: effectiveBaseUrl,
         apiKey,
         model: override.model,
         temperature: base?.temperature ?? 0.7,

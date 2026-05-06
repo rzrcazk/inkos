@@ -45,7 +45,7 @@ interface ServiceConfigEntry {
   readonly baseUrl?: string;
   readonly temperature?: number;
   readonly maxTokens?: number;
-  readonly apiFormat?: "chat" | "responses";
+  readonly apiFormat?: "chat" | "responses" | "anthropic";
   readonly stream?: boolean;
   readonly selectedModels?: readonly string[];
   readonly enabled?: boolean;
@@ -185,7 +185,12 @@ function applyServiceEntry(llm: Record<string, unknown>, entry: ServiceConfigEnt
   if (entry.temperature !== undefined) llm.temperature = entry.temperature;
   if (entry.apiFormat !== undefined) llm.apiFormat = entry.apiFormat;
   else if (transportDefaults?.apiFormat !== undefined) llm.apiFormat = transportDefaults.apiFormat;
-  else llm.apiFormat = resolveServicePreset(entry.service)?.api.startsWith("openai-responses") ? "responses" : "chat";
+  else {
+    const presetApi = resolveServicePreset(entry.service)?.api;
+    llm.apiFormat = presetApi?.startsWith("openai-responses") ? "responses"
+      : presetApi?.startsWith("anthropic") ? "anthropic"
+      : "chat";
+  }
   if (entry.stream !== undefined) llm.stream = entry.stream;
   else if (transportDefaults?.stream !== undefined) llm.stream = transportDefaults.stream;
   if (entry.selectedModels !== undefined) llm.selectedModels = entry.selectedModels;
@@ -206,7 +211,7 @@ function normalizeServiceEntries(raw: unknown): ServiceConfigEntry[] {
         ...(typeof entry.baseUrl === "string" && entry.baseUrl.length > 0 ? { baseUrl: entry.baseUrl } : {}),
         ...(typeof entry.temperature === "number" ? { temperature: entry.temperature } : {}),
         ...(typeof entry.maxTokens === "number" ? { maxTokens: entry.maxTokens } : {}),
-        ...(entry.apiFormat === "chat" || entry.apiFormat === "responses" ? { apiFormat: entry.apiFormat } : {}),
+        ...(entry.apiFormat === "chat" || entry.apiFormat === "responses" || entry.apiFormat === "anthropic" ? { apiFormat: entry.apiFormat } : {}),
         ...(typeof entry.stream === "boolean" ? { stream: entry.stream } : {}),
         ...(Array.isArray(entry.selectedModels) ? {
           selectedModels: entry.selectedModels.filter((m): m is string => typeof m === "string"),
@@ -232,7 +237,7 @@ function normalizeServiceEntryFromPatch(serviceId: string, value: Record<string,
       ...(typeof value.baseUrl === "string" && value.baseUrl.length > 0 ? { baseUrl: value.baseUrl } : {}),
       ...(typeof value.temperature === "number" ? { temperature: value.temperature } : {}),
       ...(typeof value.maxTokens === "number" ? { maxTokens: value.maxTokens } : {}),
-      ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
+      ...(value.apiFormat === "chat" || value.apiFormat === "responses" || value.apiFormat === "anthropic" ? { apiFormat: value.apiFormat } : {}),
       ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
       ...(Array.isArray(value.selectedModels) ? {
         selectedModels: value.selectedModels.filter((m): m is string => typeof m === "string"),
@@ -247,7 +252,7 @@ function normalizeServiceEntryFromPatch(serviceId: string, value: Record<string,
       ...(typeof value.baseUrl === "string" && value.baseUrl.length > 0 ? { baseUrl: value.baseUrl } : {}),
       ...(typeof value.temperature === "number" ? { temperature: value.temperature } : {}),
       ...(typeof value.maxTokens === "number" ? { maxTokens: value.maxTokens } : {}),
-      ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
+      ...(value.apiFormat === "chat" || value.apiFormat === "responses" || value.apiFormat === "anthropic" ? { apiFormat: value.apiFormat } : {}),
       ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
       ...(Array.isArray(value.selectedModels) ? {
         selectedModels: value.selectedModels.filter((m): m is string => typeof m === "string"),
@@ -259,7 +264,7 @@ function normalizeServiceEntryFromPatch(serviceId: string, value: Record<string,
     service: serviceId,
     ...(typeof value.temperature === "number" ? { temperature: value.temperature } : {}),
     ...(typeof value.maxTokens === "number" ? { maxTokens: value.maxTokens } : {}),
-    ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
+    ...(value.apiFormat === "chat" || value.apiFormat === "responses" || value.apiFormat === "anthropic" ? { apiFormat: value.apiFormat } : {}),
     ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
     ...(Array.isArray(value.selectedModels) ? {
       selectedModels: value.selectedModels.filter((m): m is string => typeof m === "string"),

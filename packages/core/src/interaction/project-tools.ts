@@ -498,16 +498,36 @@ export function createInteractionToolsFromDeps(
         ? `当前草案参数：${JSON.stringify(existingDraft, null, 2)}\n\n用户输入：${input}`
         : input;
 
-      const result = await chatWithTools(
-        instrumentedPipeline.config.client,
-        instrumentedPipeline.config.model,
-        [
-          { role: "system", content: BOOK_DRAFT_SYSTEM_PROMPT },
-          { role: "user", content: userContent },
-        ],
-        [CREATE_BOOK_TOOL],
-        { temperature: 0.4 },
-      );
+      let result: Awaited<ReturnType<typeof chatWithTools>>;
+      try {
+        result = await chatWithTools(
+          instrumentedPipeline.config.client,
+          instrumentedPipeline.config.model,
+          [
+            { role: "system", content: BOOK_DRAFT_SYSTEM_PROMPT },
+            { role: "user", content: userContent },
+          ],
+          [CREATE_BOOK_TOOL],
+          { temperature: 0.4 },
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("empty") && msg.includes("response")) {
+          return {
+            __interaction: {
+              responseText: "LLM 返回了空响应。请检查：1) API Key 是否正确；2) 所选模型是否支持流式输出；3) 网络连接是否正常。",
+              details: {
+                creationDraft: {
+                  concept,
+                  missingFields: ["title", "genre", "targetChapters"],
+                  readyToCreate: false,
+                },
+              },
+            },
+          };
+        }
+        throw err;
+      }
 
       // Extract tool call if present
       const toolCall = result.toolCalls[0];
