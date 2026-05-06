@@ -38,7 +38,7 @@ export function useSmartRouting(
           const lo = id.toLowerCase();
           return lo.includes("claude") && (lo.includes("opus") || lo.includes("sonnet"));
         },
-        agentKeys: ["writer", "architect"],
+        agentKeys: ["writer", "architect", "foundation-reviewer"],
       },
       {
         tierKey: "high",
@@ -60,7 +60,7 @@ export function useSmartRouting(
             lo.includes("kimi-k2")
           );
         },
-        agentKeys: ["planner", "chapter-analyzer"],
+        agentKeys: ["planner", "chapter-analyzer", "fanfic-canon-importer", "polisher", "state-validator", "length-normalizer"],
       },
       {
         tierKey: "mid",
@@ -92,6 +92,11 @@ export function useSmartRouting(
       planner: "planner",
       "chapter-analyzer": "chapterAnalyzer",
       radar: "radar",
+      "foundation-reviewer": "foundationReviewer",
+      "fanfic-canon-importer": "fanficCanonImporter",
+      polisher: "polisher",
+      "state-validator": "stateValidator",
+      "length-normalizer": "lengthNormalizer",
     };
 
     // Collect ALL matching models per tier (not just the first one).

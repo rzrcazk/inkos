@@ -225,7 +225,13 @@ const strings = {
   "config.agent.reviser": { zh: "修订者", en: "Reviser" },
   "config.agent.architect": { zh: "建筑师", en: "Architect" },
   "config.agent.radar": { zh: "雷达", en: "Radar" },
-  "config.agent.chapterAnalyzer": { zh: "章节分析器", en: "Chapter Analyzer" },
+  "config.agent.chapterAnalyzer": { zh: "章节分析", en: "Chapter Analyzer" },
+  "config.agent.foundationReviewer": { zh: "基础设定审核", en: "Foundation Reviewer" },
+  "config.agent.planner": { zh: "章节规划", en: "Planner" },
+  "config.agent.fanficCanonImporter": { zh: "同人设定导入", en: "Fanfic Canon Importer" },
+  "config.agent.polisher": { zh: "润色", en: "Polisher" },
+  "config.agent.stateValidator": { zh: "状态校验", en: "State Validator" },
+  "config.agent.lengthNormalizer": { zh: "字数规范化", en: "Length Normalizer" },
 
   // Smart Routing
   "config.smartRouting": { zh: "智能路由", en: "Smart Route" },
@@ -249,6 +255,11 @@ const strings = {
   "config.reason.planner": { zh: "性价比高，章节意图规划", en: "Cost-effective for chapter planning" },
   "config.reason.chapterAnalyzer": { zh: "中高 Token，连续性分析", en: "Mid-high tokens for continuity analysis" },
   "config.reason.radar": { zh: "轻量任务，市场扫描", en: "Lightweight task: market scanning" },
+  "config.reason.foundationReviewer": { zh: "顶级推理，基础设定审核", en: "Top reasoning for foundation review" },
+  "config.reason.polisher": { zh: "中高 Token，文字润色", en: "Mid-high tokens for text polishing" },
+  "config.reason.stateValidator": { zh: "中高 Token，状态校验", en: "Mid-high tokens for state validation" },
+  "config.reason.lengthNormalizer": { zh: "中高 Token，字数规范化", en: "Mid-high tokens for length normalization" },
+  "config.reason.fanficCanonImporter": { zh: "中高 Token，同人设定导入", en: "Mid-high tokens for fanfic canon import" },
 
   // Truth Files extras
   "truth.title": { zh: "真相文件", en: "Truth Files" },
