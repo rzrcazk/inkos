@@ -662,15 +662,22 @@ async function probeServiceCapabilities(args: {
     };
   }
   const discoveredModels = modelsResponse.models;
-  // For bank services, probe with the service's own check model first — not the global default.
   const endpoint = getAllEndpoints().find((ep) => ep.id === baseService);
   const preset = resolveServicePreset(baseService);
+  const discoveredFirstModel =
+    discoveredModels.find((model) => isTextChatModelId(model.id))?.id
+    ?? discoveredModels[0]?.id;
+  // Prefer live /models results; if unavailable, probe with the service's own check model before global defaults.
   const serviceFirstModel =
-    endpoint?.checkModel
+    discoveredFirstModel
+    ?? endpoint?.checkModel
     ?? preset?.knownModels?.[0]
     ?? endpoint?.models.find((model) => model.enabled !== false)?.id;
   const useDynamicLocalModels = baseService === "ollama";
-  const useEndpointCheckModel = !useDynamicLocalModels && !isCustomServiceId(args.service) && Boolean(endpoint?.checkModel);
+  const useEndpointCheckModel = !useDynamicLocalModels
+    && !isCustomServiceId(args.service)
+    && discoveredModels.length === 0
+    && Boolean(endpoint?.checkModel);
   const configService = typeof llm.service === "string" ? llm.service : undefined;
   const configModel = !useEndpointCheckModel && configService === args.service
     ? typeof llm.defaultModel === "string"
@@ -681,7 +688,7 @@ async function probeServiceCapabilities(args: {
     : undefined;
   const useCustomFallbacks = isCustomServiceId(args.service);
   const modelCandidates = buildModelCandidates({
-    preferredModel: args.preferredModel ?? (useDynamicLocalModels ? discoveredModels[0]?.id ?? serviceFirstModel : serviceFirstModel),
+    preferredModel: args.preferredModel ?? serviceFirstModel,
     configModel,
     envModel: useCustomFallbacks ? envModel : undefined,
     discoveredModels: useEndpointCheckModel ? [] : discoveredModels,
