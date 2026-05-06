@@ -1,8 +1,5 @@
 import type { NotifyChannel } from "../models/project.js";
-import { sendTelegram } from "./telegram.js";
-import { sendFeishu } from "./feishu.js";
-import { sendWechatWork } from "./wechat-work.js";
-import { sendWebhook, type WebhookPayload } from "./webhook.js";
+import type { WebhookPayload } from "./webhook.js";
 
 export interface NotifyMessage {
   readonly title: string;
@@ -19,36 +16,48 @@ export async function dispatchNotification(
     try {
       switch (channel.type) {
         case "telegram":
-          await sendTelegram(
-            { botToken: channel.botToken, chatId: channel.chatId },
-            fullText,
-          );
+          {
+            const { sendTelegram } = await import("./telegram.js");
+            await sendTelegram(
+              { botToken: channel.botToken, chatId: channel.chatId },
+              fullText,
+            );
+          }
           break;
         case "feishu":
-          await sendFeishu(
-            { webhookUrl: channel.webhookUrl },
-            message.title,
-            message.body,
-          );
+          {
+            const { sendFeishu } = await import("./feishu.js");
+            await sendFeishu(
+              { webhookUrl: channel.webhookUrl },
+              message.title,
+              message.body,
+            );
+          }
           break;
         case "wechat-work":
-          await sendWechatWork(
-            { webhookUrl: channel.webhookUrl },
-            fullText,
-          );
+          {
+            const { sendWechatWork } = await import("./wechat-work.js");
+            await sendWechatWork(
+              { webhookUrl: channel.webhookUrl },
+              fullText,
+            );
+          }
           break;
         case "webhook":
           // Webhook channels are handled by dispatchWebhookEvent for structured events.
           // For generic text notifications, send as a pipeline-complete event.
-          await sendWebhook(
-            { url: channel.url, secret: channel.secret, events: channel.events },
-            {
-              event: "pipeline-complete",
-              bookId: "",
-              timestamp: new Date().toISOString(),
-              data: { title: message.title, body: message.body },
-            },
-          );
+          {
+            const { sendWebhook } = await import("./webhook.js");
+            await sendWebhook(
+              { url: channel.url, secret: channel.secret, events: channel.events },
+              {
+                event: "pipeline-complete",
+                bookId: "",
+                timestamp: new Date().toISOString(),
+                data: { title: message.title, body: message.body },
+              },
+            );
+          }
           break;
       }
     } catch (e) {
@@ -73,6 +82,7 @@ export async function dispatchWebhookEvent(
   const tasks = webhookChannels.map(async (channel) => {
     if (channel.type !== "webhook") return;
     try {
+      const { sendWebhook } = await import("./webhook.js");
       await sendWebhook(
         { url: channel.url, secret: channel.secret, events: channel.events },
         payload,

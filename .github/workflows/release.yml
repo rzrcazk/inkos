@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [20, 22]
+        node-version: [20, 22, 24]
 
     steps:
       - uses: actions/checkout@v4
@@ -185,6 +185,8 @@ jobs:
 
           npx inkos --version
           test -f node_modules/@actalk/inkos-studio/dist/api/index.js
+          node -e "import('@actalk/inkos-core').then(m => { if (!m.PipelineRunner) throw new Error('installed core import missing PipelineRunner'); console.log('installed core import OK') })"
+          test -f node_modules/@actalk/inkos-core/dist/notify/telegram.js || test -f node_modules/@actalk/inkos/node_modules/@actalk/inkos-core/dist/notify/telegram.js
           echo "Canary verification passed"
           rm -rf "$TMPDIR"
 
@@ -283,6 +285,8 @@ jobs:
 
           npx inkos --version
           test -f node_modules/@actalk/inkos-studio/dist/api/index.js
+          node -e "import('@actalk/inkos-core').then(m => { if (!m.PipelineRunner) throw new Error('installed core import missing PipelineRunner'); console.log('installed core import OK') })"
+          test -f node_modules/@actalk/inkos-core/dist/notify/telegram.js || test -f node_modules/@actalk/inkos/node_modules/@actalk/inkos-core/dist/notify/telegram.js
           echo "Release verification passed"
           rm -rf "$TMPDIR"
 

@@ -310,7 +310,40 @@ export { validateRuntimeState, type RuntimeStateValidationIssue } from "./state/
 
 // Notify
 export { dispatchNotification, dispatchWebhookEvent, type NotifyMessage } from "./notify/dispatcher.js";
-export { sendTelegram, type TelegramConfig } from "./notify/telegram.js";
-export { sendFeishu, type FeishuConfig } from "./notify/feishu.js";
-export { sendWechatWork, type WechatWorkConfig } from "./notify/wechat-work.js";
-export { sendWebhook, type WebhookConfig, type WebhookEvent, type WebhookPayload } from "./notify/webhook.js";
+export type { TelegramConfig } from "./notify/telegram.js";
+export type { FeishuConfig } from "./notify/feishu.js";
+export type { WechatWorkConfig } from "./notify/wechat-work.js";
+export type { WebhookConfig, WebhookEvent, WebhookPayload } from "./notify/webhook.js";
+
+export async function sendTelegram(
+  config: import("./notify/telegram.js").TelegramConfig,
+  message: string,
+): Promise<void> {
+  const transport = await import("./notify/telegram.js");
+  await transport.sendTelegram(config, message);
+}
+
+export async function sendFeishu(
+  config: import("./notify/feishu.js").FeishuConfig,
+  title: string,
+  text: string,
+): Promise<void> {
+  const transport = await import("./notify/feishu.js");
+  await transport.sendFeishu(config, title, text);
+}
+
+export async function sendWechatWork(
+  config: import("./notify/wechat-work.js").WechatWorkConfig,
+  text: string,
+): Promise<void> {
+  const transport = await import("./notify/wechat-work.js");
+  await transport.sendWechatWork(config, text);
+}
+
+export async function sendWebhook(
+  config: import("./notify/webhook.js").WebhookConfig,
+  payload: import("./notify/webhook.js").WebhookPayload,
+): Promise<void> {
+  const transport = await import("./notify/webhook.js");
+  await transport.sendWebhook(config, payload);
+}
