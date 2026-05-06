@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, resolve, basename } from "node:path";
-import { PipelineRunner, type BookConfig, type FanficMode } from "@actalk/inkos-core";
+import { deriveBookIdFromTitle, normalizePlatformOrOther, PipelineRunner, type BookConfig, type FanficMode } from "@actalk/inkos-core";
 import { loadConfig, buildPipelineConfig, findProjectRoot, resolveBookId, log, logError } from "../utils.js";
 
 export const fanficCommand = new Command("fanfic")
@@ -38,17 +38,13 @@ fanficCommand
         throw new Error(`源素材文件内容过短（${sourceText.length} 字符）。请提供至少 100 字符的原作素材。`);
       }
 
-      const bookId = opts.title
-        .toLowerCase()
-        .replace(/[^a-z0-9\u4e00-\u9fff]/g, "-")
-        .replace(/-+/g, "-")
-        .slice(0, 30);
+      const bookId = deriveBookIdFromTitle(opts.title) || `book-${Date.now().toString(36)}`;
 
       const now = new Date().toISOString();
       const book: BookConfig = {
         id: bookId,
         title: opts.title,
-        platform: opts.platform,
+        platform: normalizePlatformOrOther(opts.platform),
         genre: opts.genre,
         status: "outlining",
         targetChapters: parseInt(opts.targetChapters, 10),

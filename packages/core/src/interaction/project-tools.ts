@@ -8,7 +8,6 @@ import type {
   ReviseMode,
   LLMClient,
   BookConfig,
-  Platform,
   ToolDefinition,
 } from "../index.js";
 import { chatCompletion, chatWithTools } from "../index.js";
@@ -17,6 +16,8 @@ import type { InteractionRuntimeTools } from "./runtime.js";
 import type { BookCreationDraft } from "./session.js";
 import { writeExportArtifact } from "./export-artifact.js";
 import { safeChildPath } from "../utils/path-safety.js";
+import { deriveBookIdFromTitle } from "../utils/book-id.js";
+import { normalizePlatformOrOther } from "../models/book.js";
 
 const SAFE_TRUTH_FLAT_FILE_NAMES = new Set([
   "author_intent.md",
@@ -83,25 +84,6 @@ type InstrumentablePipelineLike = PipelineLike & {
   };
 };
 
-function normalizePlatform(platform?: string): Platform {
-  switch (platform) {
-    case "tomato":
-    case "feilu":
-    case "qidian":
-      return platform;
-    default:
-      return "other";
-  }
-}
-
-function deriveBookId(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fff]/g, "-")
-    .replace(/-+/g, "-")
-    .slice(0, 30);
-}
-
 function buildBookConfig(input: {
   readonly title: string;
   readonly genre?: string;
@@ -112,9 +94,9 @@ function buildBookConfig(input: {
 }): BookConfig {
   const now = new Date().toISOString();
   return {
-    id: deriveBookId(input.title),
+    id: deriveBookIdFromTitle(input.title) || `book-${Date.now().toString(36)}`,
     title: input.title,
-    platform: normalizePlatform(input.platform),
+    platform: normalizePlatformOrOther(input.platform),
     genre: input.genre ?? "other",
     status: "outlining",
     targetChapters: input.targetChapters ?? 200,

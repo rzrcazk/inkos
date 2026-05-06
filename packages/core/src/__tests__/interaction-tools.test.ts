@@ -297,6 +297,37 @@ describe("interaction tools", () => {
     );
   });
 
+  it("normalizes human-facing platform aliases before creating a book", async () => {
+    const pipeline = {
+      initBook: vi.fn(async () => undefined),
+      writeNextChapter: vi.fn(),
+      reviseDraft: vi.fn(),
+    };
+    const state = {
+      ensureControlDocuments: vi.fn(async () => {}),
+      bookDir: vi.fn((bookId: string) => join(projectRoot, "books", bookId)),
+      loadBookConfig: vi.fn(),
+      loadChapterIndex: vi.fn(async () => []),
+      saveChapterIndex: vi.fn(async () => undefined),
+      listBooks: vi.fn(async () => []),
+    };
+
+    const tools = createInteractionToolsFromDeps(pipeline, state);
+    await tools.createBook?.({
+      title: "测试书",
+      genre: "urban",
+      platform: "番茄小说",
+    });
+
+    expect(pipeline.initBook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "测试书",
+        platform: "tomato",
+      }),
+      expect.any(Object),
+    );
+  });
+
   it("builds a reusable chapter lookup from a single directory listing", () => {
     const lookup = buildChapterFileLookup([
       "0001_First.md",

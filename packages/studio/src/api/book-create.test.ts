@@ -4,6 +4,7 @@ import { buildStudioBookConfig, normalizeStudioPlatform, waitForStudioBookReady 
 describe("normalizeStudioPlatform", () => {
   it("keeps supported chinese platform ids and folds unsupported values to other", () => {
     expect(normalizeStudioPlatform("tomato")).toBe("tomato");
+    expect(normalizeStudioPlatform("番茄小说")).toBe("tomato");
     expect(normalizeStudioPlatform("qidian")).toBe("qidian");
     expect(normalizeStudioPlatform("feilu")).toBe("feilu");
     expect(normalizeStudioPlatform("royal-road")).toBe("other");

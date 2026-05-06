@@ -9,6 +9,7 @@ import { assertSafeTruthFileName, createInteractionToolsFromDeps } from "../inte
 import { writeExportArtifact } from "../interaction/export-artifact.js";
 import { assertSafeBookId, deriveBookIdFromTitle } from "../utils/book-id.js";
 import { safeChildPath } from "../utils/path-safety.js";
+import { normalizePlatformId, normalizePlatformOrOther } from "../models/book.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -105,36 +106,6 @@ const SubAgentParams = Type.Object({
 });
 
 type SubAgentParamsType = Static<typeof SubAgentParams>;
-type ArchitectPlatform = NonNullable<SubAgentParamsType["platform"]>;
-
-function normalizeArchitectPlatform(platform: unknown): ArchitectPlatform | undefined {
-  if (typeof platform !== "string") {
-    return undefined;
-  }
-
-  const raw = platform.trim();
-  if (!raw) {
-    return undefined;
-  }
-
-  const lowered = raw.toLowerCase();
-  const compact = lowered.replace(/[\s_-]+/g, "");
-
-  if (compact === "tomato" || compact === "fanqie" || compact === "fanqienovel" || raw.includes("番茄")) {
-    return "tomato";
-  }
-  if (compact === "qidian" || compact === "qidianzhongwenwang" || raw.includes("起点")) {
-    return "qidian";
-  }
-  if (compact === "feilu" || raw.includes("飞卢")) {
-    return "feilu";
-  }
-  if (compact === "other" || compact === "others" || raw.includes("其他") || raw.includes("其它")) {
-    return "other";
-  }
-
-  return "other";
-}
 
 function prepareSubAgentArguments(args: unknown): SubAgentParamsType {
   if (!args || typeof args !== "object" || Array.isArray(args)) {
@@ -143,7 +114,7 @@ function prepareSubAgentArguments(args: unknown): SubAgentParamsType {
 
   const prepared = { ...(args as Record<string, unknown>) };
   if ("platform" in prepared) {
-    const platform = normalizeArchitectPlatform(prepared.platform);
+    const platform = normalizePlatformId(prepared.platform);
     if (platform) {
       prepared.platform = platform;
     } else {
@@ -215,7 +186,7 @@ export function createSubAgentTool(
                 id,
                 title: resolvedTitle,
                 genre: genre ?? "general",
-                platform: normalizeArchitectPlatform(platform) ?? "other",
+                platform: normalizePlatformOrOther(platform),
                 language: (language ?? "zh") as any,
                 status: "outlining" as any,
                 targetChapters: targetChapters ?? 200,

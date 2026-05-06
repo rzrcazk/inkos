@@ -1,4 +1,4 @@
-import type { Platform } from "@actalk/inkos-core";
+import { normalizePlatformOrOther, type Platform } from "@actalk/inkos-core";
 
 export interface StudioCreateBookBody {
   readonly title: string;
@@ -36,14 +36,7 @@ interface WaitForStudioBookReadyOptions {
 }
 
 export function normalizeStudioPlatform(platform?: string): Platform {
-  switch (platform) {
-    case "tomato":
-    case "feilu":
-    case "qidian":
-      return platform;
-    default:
-      return "other";
-  }
+  return normalizePlatformOrOther(platform);
 }
 
 export function buildStudioBookConfig(body: StudioCreateBookBody, now: string): StudioBookConfigDraft {

@@ -204,6 +204,7 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
     createLogger: vi.fn(() => logger),
     computeAnalytics: vi.fn(() => ({})),
     isSafeBookId: actual.isSafeBookId,
+    normalizePlatformOrOther: actual.normalizePlatformOrOther,
     chatCompletion: chatCompletionMock,
     loadProjectConfig: loadProjectConfigMock,
     processProjectInteractionInput: processProjectInteractionInputMock,

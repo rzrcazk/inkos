@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { access, readFile, rm } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { join, resolve } from "node:path";
-import { PipelineRunner, StateManager, type BookConfig } from "@actalk/inkos-core";
+import { deriveBookIdFromTitle, normalizePlatformOrOther, PipelineRunner, StateManager, type BookConfig } from "@actalk/inkos-core";
 import {
   formatBookCreateCreated,
   formatBookCreateCreating,
@@ -31,11 +31,7 @@ bookCommand
     try {
       const root = findProjectRoot();
 
-      const bookId = opts.title
-        .toLowerCase()
-        .replace(/[^a-z0-9\u4e00-\u9fff]/g, "-")
-        .replace(/-+/g, "-")
-        .slice(0, 30);
+      const bookId = deriveBookIdFromTitle(opts.title) || `book-${Date.now().toString(36)}`;
 
       const bookDir = join(root, "books", bookId);
       try {
@@ -55,7 +51,7 @@ bookCommand
       const book: BookConfig = {
         id: bookId,
         title: opts.title,
-        platform: opts.platform,
+        platform: normalizePlatformOrOther(opts.platform),
         genre: opts.genre,
         status: "outlining",
         targetChapters: parseInt(opts.targetChapters, 10),

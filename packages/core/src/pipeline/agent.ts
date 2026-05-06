@@ -1,7 +1,8 @@
 import { chatWithTools, type AgentMessage, type ToolDefinition } from "../llm/provider.js";
 import { PipelineRunner, type PipelineConfig } from "./runner.js";
-import type { Platform, Genre } from "../models/book.js";
+import { normalizePlatformOrOther, type Genre } from "../models/book.js";
 import { DEFAULT_REVISE_MODE, type ReviseMode } from "../agents/reviser.js";
+import { deriveBookIdFromTitle } from "../utils/book-id.js";
 
 /** Tool definitions for the agent loop. */
 const TOOLS: ReadonlyArray<ToolDefinition> = [
@@ -420,16 +421,12 @@ export async function executeAgentTool(
     case "create_book": {
       const now = new Date().toISOString();
       const title = args.title as string;
-      const bookId = title
-        .toLowerCase()
-        .replace(/[^a-z0-9\u4e00-\u9fff]/g, "-")
-        .replace(/-+/g, "-")
-        .slice(0, 30);
+      const bookId = deriveBookIdFromTitle(title) || `book-${Date.now().toString(36)}`;
 
       const book = {
         id: bookId,
         title,
-        platform: ((args.platform as string) ?? "tomato") as Platform,
+        platform: normalizePlatformOrOther(args.platform ?? "tomato"),
         genre: ((args.genre as string) ?? "xuanhuan") as Genre,
         status: "outlining" as const,
         targetChapters: 200,

@@ -164,6 +164,29 @@ describe("agent pipeline tools", () => {
       .resolves.toContain("mentor fallout");
   });
 
+  it("normalizes human-facing platform aliases before create_book persists config", async () => {
+    const initBook = vi.spyOn(PipelineRunner.prototype, "initBook").mockResolvedValue(undefined);
+
+    const result = JSON.parse(await executeAgentTool(
+      pipeline,
+      state,
+      config,
+      "create_book",
+      {
+        title: "测试书",
+        genre: "urban",
+        platform: "番茄小说",
+        brief: "一本文娱爽文。",
+      },
+    ));
+
+    expect(result).toMatchObject({ bookId: "测试书", title: "测试书", status: "created" });
+    expect(initBook).toHaveBeenCalledWith(expect.objectContaining({
+      id: "测试书",
+      platform: "tomato",
+    }));
+  });
+
   it("keeps update_current_focus usable for explicit local overrides through the tool surface", async () => {
     await executeAgentTool(pipeline, state, config, "update_current_focus", {
       bookId,
