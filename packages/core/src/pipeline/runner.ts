@@ -526,12 +526,32 @@ export class PipelineRunner {
   }
 
   private resolveOverride(agentName: string): { model: string; client: LLMClient } {
+    const agentLabels: Record<string, string> = {
+      radar: "市场雷达",
+      planner: "章节规划",
+      architect: "章节架构",
+      writer: "正文写作",
+      auditor: "连续性审计",
+      reviser: "修订",
+      "foundation-reviewer": "基础设定审核",
+      "fanfic-canon-importer": "同人设定导入",
+      "chapter-analyzer": "章节分析",
+      "length-normalizer": "字数规范化",
+      polisher: "润色",
+      "state-validator": "状态校验",
+    };
+    const label = agentLabels[agentName] ?? agentName;
+
     const override = this.config.modelOverrides?.[agentName];
     if (!override) {
-      return { model: this.config.model, client: this.config.client };
+      throw new Error(
+        `${label}(${agentName}) 未配置路由规则。请在 inkos.json 的 modelOverrides 中为 "${agentName}" 添加 service + model 配置。`,
+      );
     }
     if (typeof override === "string") {
-      return { model: override, client: this.config.client };
+      throw new Error(
+        `${label}(${agentName}) 路由配置不合法：modelOverrides 中 "${agentName}" 的值是字符串 "${override}"，缺少 service 配置，请改为 { model: "...", service: "..." } 格式。`,
+      );
     }
 
     const base = this.config.defaultLLMConfig;
@@ -539,39 +559,51 @@ export class PipelineRunner {
     // Resolve baseUrl: explicit > service lookup > no override
     const serviceId = override.service;
     let effectiveBaseUrl = override.baseUrl;
+    let serviceEntry = base?.services?.find(
+      (e) => (e.service === "custom" ? `custom:${e.name ?? "Custom"}` : e.service) === serviceId,
+    );
     if (!effectiveBaseUrl && serviceId) {
-      // Look up baseUrl from the services array in defaultLLMConfig (for custom services)
-      const serviceEntry = base?.services?.find(
-        (e) => (e.service === "custom" ? `custom:${e.name ?? "Custom"}` : e.service) === serviceId,
-      );
       effectiveBaseUrl = serviceEntry?.baseUrl ?? resolveServicePreset(serviceId)?.baseUrl;
-    }
-    process.stderr.write(`[LLM] resolveOverride agent=${agentName} svc=${serviceId ?? "(none)"} url=${effectiveBaseUrl ?? "(fallback)"} servicesLen=${base?.services?.length ?? 0}\n`);
-
-    if (!effectiveBaseUrl) {
-      // No baseUrl resolvable — reuse the default client but with the overridden model
-      return { model: override.model, client: this.config.client };
     }
 
     // Determine provider and apiFormat from service when not explicitly set
-    const serviceEntry = serviceId
-      ? base?.services?.find(
-          (e) => (e.service === "custom" ? `custom:${e.name ?? "Custom"}` : e.service) === serviceId,
-        )
-      : undefined;
+    if (!serviceEntry && serviceId) {
+      serviceEntry = base?.services?.find(
+        (e) => (e.service === "custom" ? `custom:${e.name ?? "Custom"}` : e.service) === serviceId,
+      );
+    }
     const bareServiceId = serviceId?.startsWith("custom:") ? "custom" : (serviceId ?? "custom");
     const presetApi = serviceId ? resolveServicePreset(bareServiceId)?.api : undefined;
     const apiFormat: "chat" | "responses" | "anthropic" = serviceEntry?.apiFormat
       ?? (presetApi === "openai-responses" ? "responses" : presetApi?.startsWith("anthropic") ? "anthropic" : undefined)
       ?? base?.apiFormat
       ?? "chat";
-    // apiFormat drives provider: anthropic-format services must use provider "anthropic" so that
-    // shouldUseNativeCustomTransport routes to chatCompletionViaCustomAnthropicCompatible.
     const provider = override.provider
       ?? (apiFormat === "anthropic" ? "anthropic" : undefined)
       ?? (serviceId ? resolveServiceProviderFamily(bareServiceId) : undefined)
       ?? base?.provider
       ?? "custom";
+
+    // Log full routing decision
+    const reason = serviceId
+      ? `modelOverrides 中配置了 service="${serviceId}"`
+      : override.baseUrl
+        ? `modelOverrides 中配置了 baseUrl`
+        : "modelOverrides 配置无法解析到有效服务或地址，回退到默认客户端";
+    if (effectiveBaseUrl) {
+      process.stderr.write(
+        `[LLM] ${label}(${agentName}) → 当前功能: ${label}, ` +
+        `由于路由中配置了 ${reason}, ` +
+        `使用 service=${serviceId ?? "(none)"} baseUrl=${effectiveBaseUrl} ` +
+        `model=${override.model} provider=${provider} format=${apiFormat}\n`,
+      );
+    }
+
+    if (!effectiveBaseUrl) {
+      throw new Error(
+        `${label}(${agentName}) 服务 "${serviceId}" 无法解析到有效地址。请检查 modelOverrides 配置和 services 列表中是否存在该服务。`,
+      );
+    }
 
     // Resolve apiKey: explicit env > pre-resolved service key > base key
     const apiKeySource = override.apiKeyEnv

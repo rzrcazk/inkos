@@ -1316,7 +1316,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       connected: Boolean(secrets.services[ep.id]?.apiKey),
       baseUrl: ep.baseUrl,
       api: ep.api,
-      enabled: enabledMap.has(ep.id) ? enabledMap.get(ep.id) !== false : true,
+      enabled: enabledMap.has(ep.id) ? enabledMap.get(ep.id) !== false : Boolean(secrets.services[ep.id]?.apiKey),
     }));
 
     // Add custom services from inkos.json
@@ -2030,58 +2030,14 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       }
 
       if (!resolvedModel) {
-        // 3. Try defaultModel from new config format
-        const rawConfig = config.llm as unknown as Record<string, unknown>;
-        const defaultModel = rawConfig.defaultModel as string | undefined;
-        const servicesArr = normalizeServiceConfig(rawConfig.services);
-        const firstService = servicesArr[0];
-        if (firstService?.service && defaultModel && isTextChatModelId(defaultModel)) {
-          try {
-            const resolved = await resolveServiceModel(
-              serviceConfigKey(firstService),
-              defaultModel,
-              root,
-              firstService.baseUrl,
-              firstService.apiFormat,
-            );
-            resolvedModel = resolved.model;
-            resolvedApiKey = resolved.apiKey;
-          } catch { /* fall through */ }
-        }
-      }
-
-      if (!resolvedModel) {
-        // 4. Try first connected service from secrets
-        const secrets = await loadSecrets(root);
-        for (const [svcName, svcData] of Object.entries(secrets.services)) {
-          if (svcData?.apiKey) {
-            try {
-              const models = await listModelsForService(svcName, svcData.apiKey);
-              const textModels = filterTextChatModels(models);
-              if (textModels.length > 0) {
-                const configuredEntry = await resolveConfiguredServiceEntry(root, svcName);
-                const resolved = await resolveServiceModel(
-                  svcName,
-                  textModels[0].id,
-                  root,
-                  await resolveConfiguredServiceBaseUrl(root, svcName),
-                  configuredEntry?.apiFormat,
-                );
-                resolvedModel = resolved.model;
-                resolvedApiKey = resolved.apiKey;
-                break;
-              }
-            } catch { /* try next */ }
-          }
-        }
-      }
-
-      if (!resolvedModel) {
-        // 5. Legacy fallback: use createLLMClient
-        resolvedModel = client._piModel
-          ? client._piModel
-          : { provider: config.llm.provider ?? "anthropic", modelId: config.llm.model } as any;
-        resolvedApiKey = client._apiKey;
+        const actionInfo = reqAction ? ` 当前请求 action: "${reqAction}"` : "";
+        const serviceInfo = reqService ? ` 前端选择: service="${reqService}", model="${reqModel}"` : "";
+        const routesInfo = reqAction
+          ? ` 可用路由: ${JSON.stringify((config.llm as unknown as Record<string, unknown>).routes ?? {})}`
+          : "";
+        return c.json({
+          error: `未找到模型路由配置。${actionInfo}${serviceInfo}${routesInfo}，请在 inkos.json 的 llm.routes 中为 "${reqAction}" 配置 service + model，或在前端选择服务模型`,
+        }, 400);
       }
 
       const model = resolvedModel!;
@@ -3190,15 +3146,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
           configSource: "studio",
           thinkingBudget: 0,
         };
-        // Clear modelOverrides so PipelineRunner.resolveOverride("radar")
-        // falls through to the pipeline-level client/model instead of a
-        // stale override (e.g. radar → gpt-5.2 on a different service).
         const pipelineConfig = await buildPipelineConfig({
           client: createLLMClient(llmConfig),
           model: resolvedModel,
           currentConfig,
         });
-        const pipeline = new PipelineRunner({ ...pipelineConfig, modelOverrides: undefined });
+        const pipeline = new PipelineRunner(pipelineConfig);
         const result = await pipeline.runRadar();
         broadcast("radar:complete", { result });
         return c.json(result);
