@@ -7,6 +7,7 @@ export interface StudioCreateBookBody {
   readonly platform?: string;
   readonly chapterWordCount?: number;
   readonly targetChapters?: number;
+  readonly blurb?: string;
 }
 
 export interface StudioBookConfigDraft {

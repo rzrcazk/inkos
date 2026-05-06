@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildBookCreateAgentRequest,
+  buildBookCreatePayload,
   buildCreationDraftSummary,
   canCreateFromDraft,
+  defaultBookCreateForm,
   defaultChapterWordsForLanguage,
   ensureBookCreateSessionId,
+  isBookCreateFormReady,
   platformOptionsForLanguage,
   pickValidValue,
   resolveDraftInstruction,
@@ -35,6 +38,52 @@ describe("platformOptionsForLanguage", () => {
     const values = platformOptionsForLanguage("en").map((option) => option.value);
     expect(new Set(values).size).toBe(values.length);
     expect(values).toEqual(["royal-road", "kindle-unlimited", "scribble-hub", "other"]);
+  });
+});
+
+describe("book create form", () => {
+  it("starts with sensible defaults for chinese projects", () => {
+    expect(defaultBookCreateForm("zh")).toEqual({
+      title: "",
+      genre: "",
+      platform: "tomato",
+      targetChapters: "200",
+      chapterWordCount: "3000",
+      brief: "",
+    });
+  });
+
+  it("requires title, genre, brief, and positive numeric targets before creating", () => {
+    const ready = {
+      ...defaultBookCreateForm("zh"),
+      title: "夜港账本",
+      genre: "都市悬疑",
+      brief: "近未来港口城，主角查账洗白。",
+    };
+
+    expect(isBookCreateFormReady(ready)).toBe(true);
+    expect(isBookCreateFormReady({ ...ready, title: "" })).toBe(false);
+    expect(isBookCreateFormReady({ ...ready, brief: " " })).toBe(false);
+    expect(isBookCreateFormReady({ ...ready, targetChapters: "0" })).toBe(false);
+  });
+
+  it("builds a direct create payload without dropping the story brief", () => {
+    expect(buildBookCreatePayload({
+      title: " 夜港账本 ",
+      genre: " 都市悬疑 ",
+      platform: "qidian",
+      targetChapters: "120",
+      chapterWordCount: "2600",
+      brief: " 主角查账洗白，旧案回潮。 ",
+    }, "zh")).toEqual({
+      title: "夜港账本",
+      genre: "都市悬疑",
+      platform: "qidian",
+      language: "zh",
+      targetChapters: 120,
+      chapterWordCount: 2600,
+      blurb: "主角查账洗白，旧案回潮。",
+    });
   });
 });
 

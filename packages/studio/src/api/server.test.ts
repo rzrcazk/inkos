@@ -1700,6 +1700,7 @@ describe("createStudioServer daemon lifecycle", () => {
         language: "zh",
         chapterWordCount: 2600,
         targetChapters: 88,
+        blurb: "主角在旧城查账洗白，卷一先追账本。",
       }),
     });
 
@@ -1715,6 +1716,7 @@ describe("createStudioServer daemon lifecycle", () => {
         platform: "qidian",
         chapterWordCount: 2600,
         targetChapters: 88,
+        blurb: "主角在旧城查账洗白，卷一先追账本。",
       },
     }));
   });
