@@ -1,4 +1,5 @@
 import type { MessagePart, ToolExecution, PipelineStage } from "./types";
+import { localizeKnownRuntimeMessage } from "../../lib/error-copy";
 
 // -- Event types for the builder --
 
@@ -118,7 +119,7 @@ export function buildPartsFromEvents(events: StreamEvent[]): MessagePart[] {
             const exec = p.execution;
             exec.status = event.isError ? "error" : "completed";
             exec.completedAt = Date.now();
-            if (event.isError) exec.error = event.result;
+            if (event.isError) exec.error = event.result ? localizeKnownRuntimeMessage(event.result) : event.result;
             else exec.result = event.result;
             // Mark all remaining stages as completed
             exec.stages = exec.stages?.map((s) =>

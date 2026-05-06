@@ -7,6 +7,7 @@ import type {
   SessionSummary,
   ToolExecution,
 } from "../../types";
+import { localizeKnownRuntimeMessage } from "../../../../lib/error-copy";
 
 const NULL_BOOK_KEY = "__null__";
 
@@ -30,8 +31,8 @@ export function bookKey(bookId: string | null | undefined): string {
 }
 
 export function extractErrorMessage(error: string | { code?: string; message?: string }): string {
-  if (typeof error === "string") return error;
-  return error.message ?? "Unknown error";
+  if (typeof error === "string") return localizeKnownRuntimeMessage(error);
+  return localizeKnownRuntimeMessage(error.message ?? "Unknown error");
 }
 
 export function resolveToolLabel(tool: string, agent?: string): string {
@@ -49,16 +50,16 @@ export function summarizeResult(result: unknown): string {
 }
 
 export function extractToolError(result: unknown): string {
-  if (typeof result === "string") return result.slice(0, 500);
+  if (typeof result === "string") return localizeKnownRuntimeMessage(result).slice(0, 500);
   if (result && typeof result === "object") {
     const record = result as Record<string, unknown>;
-    if (typeof record.content === "string") return record.content.slice(0, 500);
+    if (typeof record.content === "string") return localizeKnownRuntimeMessage(record.content).slice(0, 500);
     if (record.content && Array.isArray(record.content)) {
       const textPart = record.content.find((content: any) => content.type === "text");
-      if (textPart) return (textPart as any).text?.slice(0, 500) ?? "";
+      if (textPart) return localizeKnownRuntimeMessage((textPart as any).text ?? "").slice(0, 500);
     }
   }
-  return String(result).slice(0, 500);
+  return localizeKnownRuntimeMessage(String(result)).slice(0, 500);
 }
 
 export function getOrCreateStream(

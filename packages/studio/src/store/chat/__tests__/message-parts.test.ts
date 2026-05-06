@@ -133,4 +133,23 @@ describe("buildPartsFromEvents", () => {
       expect(parts[0].execution.error).toBe("timeout");
     }
   });
+
+  it("localizes known tool errors", () => {
+    const parts = buildPartsFromEvents([
+      { type: "tool:start", id: "t1", tool: "sub_agent", agent: "writer" },
+      {
+        type: "tool:end",
+        id: "t1",
+        isError: true,
+        result: "Latest chapter 1 is state-degraded. Repair state or rewrite that chapter before continuing.",
+      },
+    ]);
+
+    expect(parts[0].type).toBe("tool");
+    if (parts[0].type === "tool") {
+      expect(parts[0].execution.error).toBe(
+        "最新第 1 章处于状态降级（state-degraded）。继续写下一章前，请先修复状态，或重写这一章。",
+      );
+    }
+  });
 });

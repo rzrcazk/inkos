@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { localizeKnownRuntimeMessage } from "../lib/error-copy";
 
 const BASE = "/api/v1";
 const API_INVALIDATE_EVENT = "inkos:api-invalidate";
@@ -65,7 +66,7 @@ async function readErrorMessage(res: Response): Promise<string> {
     try {
       const json = await res.json() as { error?: unknown };
       if (typeof json.error === "string" && json.error.trim()) {
-        return json.error;
+        return localizeKnownRuntimeMessage(json.error);
       }
       if (
         json.error &&
@@ -74,13 +75,13 @@ async function readErrorMessage(res: Response): Promise<string> {
         typeof (json.error as { message?: unknown }).message === "string" &&
         (json.error as { message: string }).message.trim()
       ) {
-        return (json.error as { message: string }).message;
+        return localizeKnownRuntimeMessage((json.error as { message: string }).message);
       }
     } catch {
       // fall through
     }
   }
-  return `${res.status} ${res.statusText}`.trim();
+  return localizeKnownRuntimeMessage(`${res.status} ${res.statusText}`.trim());
 }
 
 export async function fetchJson<T>(

@@ -48,6 +48,21 @@ describe("fetchJson", () => {
 
     await expect(fetchJson("/books/../bad", {}, { fetchImpl })).rejects.toThrow("Invalid book ID: ../bad");
   });
+
+  it("localizes known runtime errors before throwing", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({
+        error: "Latest chapter 1 is state-degraded. Repair state or rewrite that chapter before continuing.",
+      }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(fetchJson("/books/demo/write-next", { method: "POST" }, { fetchImpl })).rejects.toThrow(
+      "最新第 1 章处于状态降级（state-degraded）。继续写下一章前，请先修复状态，或重写这一章。",
+    );
+  });
 });
 
 describe("deriveInvalidationPaths", () => {
