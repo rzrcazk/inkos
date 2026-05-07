@@ -200,6 +200,15 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
 
   const defaultModels = defaultService ? resolveModels(defaultService, selectedByService.get(defaultService)) : [];
 
+  // Build resolved model map for smart routing — applies selectedModels filter just like the dropdowns.
+  const resolvedModelsByService = useMemo(() => {
+    const map: Record<string, ReadonlyArray<{ id: string; name?: string }>> = {};
+    for (const svc of connectedServices) {
+      map[svc.service] = resolveModels(svc.service, selectedByService.get(svc.service));
+    }
+    return map;
+  }, [connectedServices, selectedByService, modelsByService]);
+
   const hasAgentOverride = Object.values(form).some((o) => o.enabled && o.model);
 
   const liveModelsLoadingMap = useServiceStore((s) => s.liveModelsLoading);
@@ -210,7 +219,7 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
   // Smart routing recommendations
   const recommendations = useSmartRouting(
     connectedServices,
-    modelsByService,
+    resolvedModelsByService,
     defaultModel,
     defaultService,
   );

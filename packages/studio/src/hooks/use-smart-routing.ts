@@ -1,5 +1,10 @@
 import { useMemo } from "react";
-import type { ServiceInfo, ModelInfo } from "../store/service/types";
+import type { ServiceInfo } from "../store/service/types";
+
+interface ModelLike {
+  readonly id: string;
+  readonly name?: string;
+}
 
 export interface RoutingRecommendation {
   agentKey: string;
@@ -24,7 +29,7 @@ interface TierRule {
  */
 export function useSmartRouting(
   connectedServices: ServiceInfo[],
-  modelsByService: Record<string, ReadonlyArray<ModelInfo>>,
+  modelsByService: Record<string, ReadonlyArray<ModelLike>>,
   defaultModel: string,
   defaultService: string,
 ): RoutingRecommendation[] {
