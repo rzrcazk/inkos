@@ -189,9 +189,13 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
 
   const defaultModels = defaultService
     ? (() => {
-        const all = modelsByService[defaultService] ?? [];
         const selected = selectedByService.get(defaultService);
-        return selected ? all.filter((m) => selected.has(m.id.toLowerCase())) : all;
+        if (selected && selected.size > 0) {
+          const bank = modelsByService[defaultService] ?? [];
+          const fromBank = bank.filter((m) => selected.has(m.id.toLowerCase()));
+          return fromBank.length > 0 ? fromBank : [...selected].map((id) => ({ id, name: id }));
+        }
+        return modelsByService[defaultService] ?? [];
       })()
     : [];
 
@@ -365,9 +369,16 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
         <div className="space-y-3">
           {AGENTS.map((agent) => {
             const o = form[agent.key]!;
-            const allModels = o.service ? (modelsByService[o.service] ?? []) : [];
             const selected = o.service ? selectedByService.get(o.service) : undefined;
-            const models = selected ? allModels.filter((m) => selected.has(m.id.toLowerCase())) : allModels;
+            const models = (() => {
+              if (!o.service) return [];
+              if (selected && selected.size > 0) {
+                const bank = modelsByService[o.service] ?? [];
+                const fromBank = bank.filter((m) => selected.has(m.id.toLowerCase()));
+                return fromBank.length > 0 ? fromBank : [...selected].map((id) => ({ id, name: id }));
+              }
+              return modelsByService[o.service] ?? [];
+            })();
 
             return (
               <div key={agent.key} className="rounded-lg border border-border/30 p-4 space-y-3">
