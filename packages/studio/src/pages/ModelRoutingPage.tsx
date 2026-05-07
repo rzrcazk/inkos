@@ -175,29 +175,30 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
     defaultService !== (servicesConfig?.service ?? "") ||
     defaultModel !== (servicesConfig?.defaultModel ?? "");
 
-  // Build a map: service key → allowed model IDs (from selectedModels config).
-  // When selectedModels is set, only those models appear in routing dropdowns.
+  // Build a map: service key → configured model IDs (from selectedModels config, original casing).
+  // When selectedModels is set, those are the authoritative model list for routing dropdowns.
   const selectedByService = useMemo(() => {
-    const map = new Map<string, Set<string>>();
+    const map = new Map<string, readonly string[]>();
     for (const svc of servicesConfig?.services ?? []) {
       if (svc.selectedModels && svc.selectedModels.length > 0) {
-        map.set(svc.service, new Set(svc.selectedModels.map((s) => s.toLowerCase())));
+        map.set(svc.service, svc.selectedModels);
       }
     }
     return map;
   }, [servicesConfig?.services]);
 
-  const defaultModels = defaultService
-    ? (() => {
-        const selected = selectedByService.get(defaultService);
-        if (selected && selected.size > 0) {
-          const bank = modelsByService[defaultService] ?? [];
-          const fromBank = bank.filter((m) => selected.has(m.id.toLowerCase()));
-          return fromBank.length > 0 ? fromBank : [...selected].map((id) => ({ id, name: id }));
-        }
-        return modelsByService[defaultService] ?? [];
-      })()
-    : [];
+  // Merge selectedModels with bank: use bank entry for metadata when available,
+  // fall back to bare {id, name} for models not in bank (e.g. custom proxy models).
+  function resolveModels(service: string, selectedIds: readonly string[] | undefined) {
+    const bank = modelsByService[service] ?? [];
+    if (selectedIds && selectedIds.length > 0) {
+      const bankById = new Map(bank.map((m) => [m.id.toLowerCase(), m]));
+      return selectedIds.map((id) => bankById.get(id.toLowerCase()) ?? { id, name: id });
+    }
+    return bank;
+  }
+
+  const defaultModels = defaultService ? resolveModels(defaultService, selectedByService.get(defaultService)) : [];
 
   const hasAgentOverride = Object.values(form).some((o) => o.enabled && o.model);
 
@@ -369,16 +370,7 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
         <div className="space-y-3">
           {AGENTS.map((agent) => {
             const o = form[agent.key]!;
-            const selected = o.service ? selectedByService.get(o.service) : undefined;
-            const models = (() => {
-              if (!o.service) return [];
-              if (selected && selected.size > 0) {
-                const bank = modelsByService[o.service] ?? [];
-                const fromBank = bank.filter((m) => selected.has(m.id.toLowerCase()));
-                return fromBank.length > 0 ? fromBank : [...selected].map((id) => ({ id, name: id }));
-              }
-              return modelsByService[o.service] ?? [];
-            })();
+            const models = o.service ? resolveModels(o.service, selectedByService.get(o.service)) : [];
 
             return (
               <div key={agent.key} className="rounded-lg border border-border/30 p-4 space-y-3">
