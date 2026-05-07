@@ -6,7 +6,9 @@ import { useSmartRouting } from "../hooks/use-smart-routing";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
@@ -195,7 +197,8 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
 
   const hasAgentOverride = Object.values(form).some((o) => o.enabled && o.model);
 
-  const liveModelsLoading = useServiceStore((s) => Object.values(s.liveModelsLoading).some(Boolean));
+  const liveModelsLoadingMap = useServiceStore((s) => s.liveModelsLoading);
+  const liveModelsLoading = Object.values(liveModelsLoadingMap).some(Boolean);
 
   const loading = overridesLoading || bankModelsLoading || customModelsLoading || liveModelsLoading;
 
@@ -240,7 +243,7 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
         <div className="grid grid-cols-2 gap-3">
           {/* Service select */}
           <Select
-            value={defaultService}
+            value={defaultService || null}
             onValueChange={(v) => {
               setDefaultService(v ?? "");
               setDefaultModel("");
@@ -260,23 +263,30 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
 
           {/* Model select */}
           <Select
-            value={defaultModel}
+            value={defaultModel || null}
             onValueChange={(v) => setDefaultModel(v ?? "")}
           >
             <SelectTrigger className="w-full">
               <SelectValue placeholder={t("config.selectModel")} />
             </SelectTrigger>
             <SelectContent>
-              {defaultModels.length === 0 && (
-                <div className="px-3 py-2 text-xs text-muted-foreground">
-                  {defaultService ? "加载中..." : "先选择服务"}
-                </div>
+              {defaultModels.length === 0 ? (
+                <SelectGroup>
+                  <SelectLabel>
+                    {!defaultService
+                      ? "先选择服务"
+                      : liveModelsLoadingMap[defaultService]
+                        ? "加载中..."
+                        : "无可用模型"}
+                  </SelectLabel>
+                </SelectGroup>
+              ) : (
+                defaultModels.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.name || m.id}
+                  </SelectItem>
+                ))
               )}
-              {defaultModels.map((m) => (
-                <SelectItem key={m.id} value={m.id}>
-                  {m.name || m.id}
-                </SelectItem>
-              ))}
             </SelectContent>
           </Select>
         </div>
@@ -382,7 +392,7 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
                     <div className="grid grid-cols-2 gap-3">
                       {/* Service select */}
                       <Select
-                        value={o.service}
+                        value={o.service || null}
                         onValueChange={(v) => updateAgent(agent.key, { service: v ?? "", model: "" })}
                       >
                         <SelectTrigger className="w-full">
@@ -399,23 +409,30 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
 
                       {/* Model select */}
                       <Select
-                        value={o.model}
+                        value={o.model || null}
                         onValueChange={(v) => updateAgent(agent.key, { model: v ?? "" })}
                       >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder={t("config.selectModel")} />
                         </SelectTrigger>
                         <SelectContent>
-                          {models.length === 0 && (
-                            <div className="px-3 py-2 text-xs text-muted-foreground">
-                              {o.service ? "加载中..." : "先选择服务"}
-                            </div>
+                          {models.length === 0 ? (
+                            <SelectGroup>
+                              <SelectLabel>
+                                {!o.service
+                                  ? "先选择服务"
+                                  : liveModelsLoadingMap[o.service]
+                                    ? "加载中..."
+                                    : "无可用模型"}
+                              </SelectLabel>
+                            </SelectGroup>
+                          ) : (
+                            models.map((m) => (
+                              <SelectItem key={m.id} value={m.id}>
+                                {m.name || m.id}
+                              </SelectItem>
+                            ))
                           )}
-                          {models.map((m) => (
-                            <SelectItem key={m.id} value={m.id}>
-                              {m.name || m.id}
-                            </SelectItem>
-                          ))}
                         </SelectContent>
                       </Select>
                     </div>
