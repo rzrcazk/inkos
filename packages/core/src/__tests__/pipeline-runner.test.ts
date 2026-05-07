@@ -41,6 +41,14 @@ const ZERO_USAGE = {
   totalTokens: 0,
 } as const;
 
+const DEFAULT_MODEL_OVERRIDES = Object.fromEntries(
+  [
+    "radar", "planner", "architect", "writer", "auditor", "reviser",
+    "foundation-reviewer", "fanfic-canon-importer", "chapter-analyzer",
+    "length-normalizer", "polisher", "state-validator",
+  ].map((name) => [name, { model: "test-model", baseUrl: "https://test.example/v1" }]),
+);
+
 describe("buildImportFoundationSource", () => {
   it("compacts large imported books into opening, middle anchors, ending, and title catalog", () => {
     const chapters = Array.from({ length: 36 }, (_, index) => {
@@ -222,6 +230,7 @@ async function createRunnerFixture(
     } as ConstructorParameters<typeof PipelineRunner>[0]["client"],
     model: "test-model",
     projectRoot: root,
+    modelOverrides: DEFAULT_MODEL_OVERRIDES,
     ...configOverrides,
   });
 
@@ -410,6 +419,7 @@ describe("PipelineRunner", () => {
       model: "test-model",
       projectRoot: root,
       externalContext: brief,
+      modelOverrides: DEFAULT_MODEL_OVERRIDES,
     });
 
     vi.spyOn(ArchitectAgent.prototype, "generateFoundation").mockResolvedValue({
@@ -463,6 +473,7 @@ describe("PipelineRunner", () => {
       } as ConstructorParameters<typeof PipelineRunner>[0]["client"],
       model: "test-model",
       projectRoot: root,
+      modelOverrides: DEFAULT_MODEL_OVERRIDES,
     });
 
     const generateFoundationSpy = vi.spyOn(ArchitectAgent.prototype, "generateFoundation").mockResolvedValue({
@@ -684,6 +695,7 @@ describe("PipelineRunner", () => {
       } as ConstructorParameters<typeof PipelineRunner>[0]["client"],
       model: "test-model",
       projectRoot: root,
+      modelOverrides: DEFAULT_MODEL_OVERRIDES,
     });
 
     const now = "2026-03-29T00:00:00.000Z";

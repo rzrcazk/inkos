@@ -274,6 +274,7 @@ describe("chatCompletion via pi-ai", () => {
   it("uses native fetch transport for custom openai-compatible chat", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
+      headers: { get: () => null },
       json: async () => ({
         choices: [{ message: { content: "你好！" } }],
         usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
@@ -304,6 +305,7 @@ describe("chatCompletion via pi-ai", () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
+      headers: { get: () => null },
       json: async () => ({
         choices: [{ message: { content: "你好！" } }],
         usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
@@ -334,6 +336,7 @@ describe("chatCompletion via pi-ai", () => {
   it("attaches a proxy dispatcher for custom openai-compatible chat when proxyUrl is configured", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
+      headers: { get: () => null },
       json: async () => ({
         choices: [{ message: { content: "proxied" } }],
         usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
@@ -366,6 +369,7 @@ describe("chatCompletion via pi-ai", () => {
   it("uses reasoning_content for custom openai-compatible non-stream responses that omit content", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
+      headers: { get: () => null },
       json: async () => ({
         choices: [{ message: { reasoning_content: "推理通道文本" } }],
         usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
@@ -400,6 +404,7 @@ describe("chatCompletion via pi-ai", () => {
     ].join("");
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
+      headers: { get: () => null },
       body: new ReadableStream({
         start(controller) {
           controller.enqueue(encoder.encode(sse));
@@ -433,10 +438,12 @@ describe("chatCompletion via pi-ai", () => {
         ok: false,
         status: 400,
         statusText: "Bad Request",
+        headers: { get: () => null },
         text: async () => JSON.stringify({ error: { message: "role system is unsupported" } }),
       })
       .mockResolvedValueOnce({
         ok: true,
+        headers: { get: () => null },
         json: async () => ({
           choices: [{ message: { content: "ok" } }],
           usage: { prompt_tokens: 9, completion_tokens: 1, total_tokens: 10 },
@@ -502,6 +509,7 @@ describe("chatCompletion via pi-ai", () => {
   it("uses native fetch transport for local Ollama without an API key", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
+      headers: { get: () => null },
       json: async () => ({
         choices: [{ message: { content: "本地 Ollama 可用" } }],
         usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 },
@@ -534,6 +542,7 @@ describe("chatCompletion via pi-ai", () => {
   it("uses native fetch transport for local custom OpenAI-compatible endpoints without an API key", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
+      headers: { get: () => null },
       json: async () => ({
         choices: [{ message: { content: "本地自定义端点可用" } }],
         usage: { prompt_tokens: 5, completion_tokens: 6, total_tokens: 11 },
@@ -564,6 +573,7 @@ describe("chatCompletion via pi-ai", () => {
   it("uses native fetch transport for custom anthropic-compatible non-stream chat", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
+      headers: { get: () => null },
       json: async () => ({
         content: [{ type: "text", text: "你好，Anthropic!" }],
         usage: { input_tokens: 5, output_tokens: 3 },
@@ -610,6 +620,7 @@ describe("chatCompletion via pi-ai", () => {
     ].join("");
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
+      headers: { get: () => null },
       body: new ReadableStream({
         start(controller) {
           controller.enqueue(encoder.encode(sse));

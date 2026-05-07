@@ -15,6 +15,14 @@ const TEST_CLIENT: LLMClient = {
   stream: false,
 } as unknown as LLMClient;
 
+const TEST_MODEL_OVERRIDES = Object.fromEntries(
+  [
+    "radar", "planner", "architect", "writer", "auditor", "reviser",
+    "foundation-reviewer", "fanfic-canon-importer", "chapter-analyzer",
+    "length-normalizer", "polisher", "state-validator",
+  ].map((name) => [name, { model: "test-model", baseUrl: "https://test.example/v1" }]),
+);
+
 const buildArchitect = (): ArchitectAgent =>
   new ArchitectAgent({
     client: TEST_CLIENT,
@@ -152,6 +160,7 @@ describe("pipeline.reviseFoundation", () => {
         projectRoot: root,
         client: TEST_CLIENT,
         model: "test-model",
+        modelOverrides: TEST_MODEL_OVERRIDES,
       } as unknown as ConstructorParameters<typeof PipelineRunner>[0]);
 
       await runner.reviseFoundation("legacy-book", "升级到段落式");
@@ -218,6 +227,7 @@ describe("pipeline.reviseFoundation", () => {
       const state = new StateManager(root);
       const runner = new PipelineRunner({
         state, projectRoot: root, client: TEST_CLIENT, model: "test-model",
+        modelOverrides: TEST_MODEL_OVERRIDES,
       } as unknown as ConstructorParameters<typeof PipelineRunner>[0]);
 
       await runner.reviseFoundation("live-book", "改下主角设定");
@@ -303,6 +313,7 @@ describe("pipeline.reviseFoundation", () => {
       const state = new StateManager(root);
       const runner = new PipelineRunner({
         state, projectRoot: root, client: TEST_CLIENT, model: "test-model",
+        modelOverrides: TEST_MODEL_OVERRIDES,
       } as unknown as ConstructorParameters<typeof PipelineRunner>[0]);
 
       await runner.reviseFoundation("phase5-book", "调整某个角色设定");
@@ -370,6 +381,7 @@ describe("pipeline.reviseFoundation", () => {
       const state = new StateManager(root);
       const runner = new PipelineRunner({
         state, projectRoot: root, client: TEST_CLIENT, model: "test-model",
+        modelOverrides: TEST_MODEL_OVERRIDES,
       } as unknown as ConstructorParameters<typeof PipelineRunner>[0]);
 
       await runner.reviseFoundation("ghost-book", "精简角色");
@@ -430,6 +442,7 @@ describe("pipeline.reviseFoundation", () => {
       const state = new StateManager(root);
       const runner = new PipelineRunner({
         state, projectRoot: root, client: TEST_CLIENT, model: "test-model",
+        modelOverrides: TEST_MODEL_OVERRIDES,
       } as unknown as ConstructorParameters<typeof PipelineRunner>[0]);
 
       // revise 应该抛错
@@ -496,6 +509,7 @@ describe("pipeline.reviseFoundation", () => {
       const state = new StateManager(root);
       const runner = new PipelineRunner({
         state, projectRoot: root, client: TEST_CLIENT, model: "test-model",
+        modelOverrides: TEST_MODEL_OVERRIDES,
       } as unknown as ConstructorParameters<typeof PipelineRunner>[0]);
 
       await runner.reviseFoundation("p5", "改");

@@ -725,6 +725,7 @@ async function chatCompletionViaCustomAnthropicCompatible(
   let content = "";
   let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   const monitor = createStreamMonitor(onStreamProgress);
+  const eventTypeCounts: Record<string, number> = {};
 
   try {
     while (true) {

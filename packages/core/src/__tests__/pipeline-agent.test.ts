@@ -33,6 +33,13 @@ describe("agent pipeline tools", () => {
       model: "test-model",
       projectRoot: root,
       inputGovernanceMode: "v2",
+      modelOverrides: Object.fromEntries(
+        [
+          "radar", "planner", "architect", "writer", "auditor", "reviser",
+          "foundation-reviewer", "fanfic-canon-importer", "chapter-analyzer",
+          "length-normalizer", "polisher", "state-validator",
+        ].map((name) => [name, { model: "test-model", baseUrl: "https://test.example/v1" }]),
+      ),
     };
 
     pipeline = new PipelineRunner(config);

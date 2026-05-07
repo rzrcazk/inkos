@@ -187,12 +187,18 @@ describe("PipelineRunner structured-state memory sync", () => {
           temperature: 0.7,
           maxTokens: 4096,
           thinkingBudget: 0,
-
         },
       } as ConstructorParameters<typeof PipelineRunner>[0]["client"],
       model: "test-model",
       projectRoot: root,
       inputGovernanceMode: "legacy",
+      modelOverrides: Object.fromEntries(
+        [
+          "radar", "planner", "architect", "writer", "auditor", "reviser",
+          "foundation-reviewer", "fanfic-canon-importer", "chapter-analyzer",
+          "length-normalizer", "polisher", "state-validator",
+        ].map((name) => [name, { model: "test-model", baseUrl: "https://test.example/v1" }]),
+      ),
     });
 
     const originalSaveChapter = WriterAgent.prototype.saveChapter;

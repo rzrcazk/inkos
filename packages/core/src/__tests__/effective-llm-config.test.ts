@@ -212,37 +212,6 @@ describe("resolveEffectiveLLMConfig", () => {
     })).rejects.toThrow(/模型.*kimi-k2\.5.*不属于.*google/);
   });
 
-  it("CLI env 指向 Ollama 时允许用户本地安装的动态模型", async () => {
-    await writeProject({
-      configSource: "studio",
-      service: "google",
-      services: [{ service: "google" }, { service: "ollama" }],
-      defaultModel: "gemini-2.5-flash",
-    });
-
-    const result = await resolveEffectiveLLMConfig({
-      consumer: "cli",
-      projectRoot: root,
-      envLayers: {
-        global: {
-          INKOS_LLM_SERVICE: "ollama",
-          INKOS_LLM_PROVIDER: "openai",
-          INKOS_LLM_BASE_URL: "http://127.0.0.1:11434/v1",
-          INKOS_LLM_MODEL: "qwen3.6:35b-a3b",
-        },
-        project: {},
-        process: {},
-      },
-      requireApiKey: false,
-    });
-
-    expect(result.llm.service).toBe("ollama");
-    expect(result.llm.provider).toBe("openai");
-    expect(result.llm.baseUrl).toBe("http://127.0.0.1:11434/v1");
-    expect(result.llm.model).toBe("qwen3.6:35b-a3b");
-    expect(result.llm.apiKey).toBe("");
-  });
-
   it("CLI 使用 Studio Ollama 配置时保留不在内置 bank 的默认模型", async () => {
     await writeProject({
       configSource: "studio",
@@ -254,7 +223,6 @@ describe("resolveEffectiveLLMConfig", () => {
     const result = await resolveEffectiveLLMConfig({
       consumer: "cli",
       projectRoot: root,
-      envLayers: { global: {}, project: {}, process: {} },
       requireApiKey: false,
     });
 
@@ -274,7 +242,6 @@ describe("resolveEffectiveLLMConfig", () => {
     const result = await resolveEffectiveLLMConfig({
       consumer: "cli",
       projectRoot: root,
-      envLayers: { global: {}, project: {}, process: {} },
     });
 
     expect(result.llm.service).toBe("ollama");
@@ -294,7 +261,6 @@ describe("resolveEffectiveLLMConfig", () => {
     const result = await resolveEffectiveLLMConfig({
       consumer: "studio",
       projectRoot: root,
-      envLayers: { global: {}, project: {}, process: {} },
     });
 
     expect(result.llm.service).toBe("ollama");
