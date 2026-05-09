@@ -166,7 +166,7 @@ export function createSubAgentTool(
               }
               const targetBookId = resolveToolBookId("architect", bookId, activeBookId);
               progress(`Revising foundation for "${targetBookId}"...`);
-              await pipeline.reviseFoundation(targetBookId, feedback ?? instruction);
+              await pipeline.reviseFoundation(targetBookId, feedback ?? instruction ?? "");
               progress(`Foundation revised for "${targetBookId}".`);
               return textResult(
                 `Book "${targetBookId}" 架构稿已按要求重写。原书的条目式架构稿已备份到 story/.backup-phase4-<时间戳>/。`,
@@ -248,12 +248,13 @@ export function createSubAgentTool(
           case "exporter": {
             const targetBookId = resolveToolBookId("exporter", bookId, activeBookId);
             if (!projectRoot) return textResult("Error: exporter requires projectRoot.");
-            const inferredFormat = format ?? (/epub/i.test(instruction)
+            const resolvedInstruction = instruction ?? "";
+            const inferredFormat = format ?? (/epub/i.test(resolvedInstruction)
               ? "epub"
-              : /markdown|\bmd\b/i.test(instruction)
+              : /markdown|\bmd\b/i.test(resolvedInstruction)
                 ? "md"
                 : "txt");
-            const exportApprovedOnly = approvedOnly ?? /approved|已通过|通过章节/.test(instruction);
+            const exportApprovedOnly = approvedOnly ?? /approved|已通过|通过章节/.test(resolvedInstruction);
             const state = new StateManager(projectRoot);
             const result = await writeExportArtifact(state, targetBookId, {
               format: inferredFormat,
