@@ -285,12 +285,6 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageActions>
     const session = get().sessions[sessionId];
     if (!trimmed || !session || session.isStreaming) return;
 
-    if (!get().selectedModel) {
-      get().addUserMessage(sessionId, trimmed);
-      get().addErrorMessage(sessionId, "请先选择一个模型");
-      return;
-    }
-
     // 草稿会话：第一条消息发送时才真正把 session 文件写到磁盘。
     // 后端 POST /sessions 支持接受客户端传入的 sessionId，所以 id 保持一致，
     // 前端 store 里的 runtime 不用 remount，只需要把 isDraft 翻成 false。
@@ -347,8 +341,6 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageActions>
           instruction,
           activeBookId,
           sessionId,
-          model: get().selectedModel ?? undefined,
-          service: get().selectedService ?? undefined,
         }),
       });
 

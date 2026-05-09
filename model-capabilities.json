@@ -1,0 +1,180 @@
+{
+  "profiles": [
+    {
+      "source": "analyzed",
+      "capabilities": {
+        "creative": 8,
+        "reasoning": 8,
+        "instruction": 8,
+        "longContext": 8,
+        "chinese": 7
+      },
+      "modelId": "claude-sonnet-4-6",
+      "lastUpdated": "2026-05-07T14:51:13.222Z",
+      "notes": "当前模型量不多",
+      "displayName": "Claude Sonnet 4",
+      "provider": "Anthropic",
+      "contextWindow": 200000,
+      "analysisText": "Claude Sonnet 4 在创意写作方面表现扎实，叙事结构清晰，人物塑造合理，但在中文文学性表达上偶有'翻译腔'，成语和典故的地道运用略逊于顶级中文模型。指令遵循能力强，能较好执行格式约束。200K上下文窗口适合中长篇处理，但极长文本的一致性把控仍有提升空间。整体适合辅助创作、大纲规划和文本润色，但纯文学性中文写作建议配合人工精修。",
+      "quotaLevel": "scarce"
+    },
+    {
+      "source": "analyzed",
+      "capabilities": {
+        "creative": 9,
+        "reasoning": 9,
+        "instruction": 9,
+        "longContext": 9,
+        "chinese": 8
+      },
+      "modelId": "claude-opus-4-6",
+      "lastUpdated": "2026-05-07T14:51:15.785Z",
+      "notes": "少量",
+      "displayName": "Claude Opus 4",
+      "provider": "Anthropic",
+      "contextWindow": 200000,
+      "analysisText": "Claude Opus 4 在创意写作方面表现出色，叙事结构完整、人物塑造细腻、情感表达自然，能驾驭多种文学风格。推理与指令遵循能力强，能精确理解并执行复杂的写作约束。200K 上下文窗口适合处理中长篇小说。中文写作质量优秀，词汇丰富且语法准确，但作为英语优先模型，在中文特有文化典故、网络流行语及地道口语表达上略逊于原生中文模型，偶有翻译腔。综合而言是中文小说写作的顶级选择之一。",
+      "quotaLevel": "scarce"
+    },
+    {
+      "source": "analyzed",
+      "capabilities": {
+        "creative": 8,
+        "reasoning": 8,
+        "instruction": 8,
+        "longContext": 8,
+        "chinese": 9
+      },
+      "modelId": "qwen3.6-plus",
+      "lastUpdated": "2026-05-07T14:51:17.140Z",
+      "displayName": "Qwen 3.6 Plus",
+      "provider": "Alibaba Cloud",
+      "contextWindow": 128000,
+      "analysisText": "通义千问系列在中文写作场景表现优异，中文语感自然、词汇丰富，擅长古风与现代叙事。创意写作能力突出，人物刻画与情感表达细腻。逻辑连贯性良好，长文本把控稳定。指令遵循度较高，能较好遵守字数、格式等约束。整体适合中文小说创作，复杂情节架构能力仍有提升空间。",
+      "quotaLevel": "sufficient"
+    },
+    {
+      "source": "analyzed",
+      "capabilities": {
+        "creative": 7,
+        "reasoning": 6,
+        "instruction": 6,
+        "longContext": 7,
+        "chinese": 8
+      },
+      "modelId": "minimax-m2.7",
+      "lastUpdated": "2026-05-07T14:51:24.497Z",
+      "notes": "模型量充足",
+      "displayName": "MiniMax M2.7",
+      "provider": "MiniMax",
+      "contextWindow": 131072,
+      "analysisText": "MiniMax M2.7 在中文写作方面表现突出，叙事流畅、词汇丰富，对中文语境和文化元素理解较好，适合小说创作。创意写作能力中上，能生成具有一定文学性的文本。推理和指令遵循能力相对一般，处理复杂情节逻辑或严格格式约束时偶有偏差。长上下文支持中等偏上（128K量级），可满足中长篇创作需求。整体定位为中文创作友好型模型，适合对中文表达要求较高的场景，但在逻辑严密性和精确指令执行方面与一线旗舰模型仍有差距。",
+      "quotaLevel": "unlimited"
+    },
+    {
+      "source": "analyzed",
+      "capabilities": {
+        "creative": 8,
+        "reasoning": 8,
+        "instruction": 8,
+        "longContext": 9,
+        "chinese": 9
+      },
+      "modelId": "kimi-k2.5",
+      "lastUpdated": "2026-05-07T14:51:20.858Z",
+      "displayName": "Kimi K2.5",
+      "provider": "Moonshot AI",
+      "contextWindow": 256000,
+      "analysisText": "Kimi K2.5 在中文小说写作场景表现均衡且出色。中文能力突出，词汇丰富、语感自然，能较好把握中文文学表达习惯。长上下文处理能力是其核心优势，256K窗口可有效维持长篇叙事一致性。创意写作方面具备较好的叙事流畅度与人物刻画能力，但在文学深度和风格多样性上仍有提升空间。推理与指令遵循表现稳定，适合需要结构化输出的写作任务。",
+      "quotaLevel": "sufficient"
+    },
+    {
+      "source": "analyzed",
+      "capabilities": {
+        "creative": 7,
+        "reasoning": 7,
+        "instruction": 7,
+        "longContext": 8,
+        "chinese": 8
+      },
+      "modelId": "glm-5",
+      "lastUpdated": "2026-05-07T14:51:26.356Z",
+      "displayName": "GLM-5",
+      "provider": "智谱AI",
+      "contextWindow": 128000,
+      "analysisText": "GLM-5作为智谱AI新一代模型，中文写作能力延续系列优势，词汇丰富、表达流畅，适合小说创作。创意与叙事能力处于中上水平，能构建合理情节与人物，但文学深度与情感细腻度略逊于顶尖模型。长上下文支持良好，适合长篇连载。指令遵循稳定，复杂格式要求偶有偏差。综合而言是性价比较高的中文写作模型。",
+      "quotaLevel": "sufficient"
+    },
+    {
+      "source": "analyzed",
+      "capabilities": {
+        "creative": 7,
+        "reasoning": 7,
+        "instruction": 7,
+        "longContext": 8,
+        "chinese": 7
+      },
+      "modelId": "mimo-v2.5-pro",
+      "lastUpdated": "2026-05-07T14:51:28.190Z",
+      "notes": "无限量",
+      "displayName": "MIMO v2.5 Pro",
+      "provider": "未知",
+      "contextWindow": null,
+      "analysisText": "MIMO v2.5 Pro 作为中文写作模型，在叙事流畅度和文化理解上表现中上，能处理较复杂的文学创作场景。长上下文能力较好，适合中长篇小说创作。但在人物深度刻画、情感细腻表达及复杂情节逻辑连贯性方面，与头部模型仍有差距。指令遵循能力稳定，可满足常规格式要求。整体适合中等难度中文小说辅助创作，高要求文学创作需人工深度润色。注：缺乏该模型权威评测数据，评分为基于命名惯例的合理估算。",
+      "quotaLevel": "unlimited"
+    },
+    {
+      "source": "analyzed",
+      "capabilities": {
+        "creative": null,
+        "reasoning": null,
+        "instruction": null,
+        "longContext": null,
+        "chinese": null
+      },
+      "modelId": "gpt-5.4",
+      "lastUpdated": "2026-05-07T14:52:18.884Z",
+      "notes": "少量",
+      "displayName": "GPT-5.4",
+      "provider": "未知",
+      "contextWindow": null,
+      "analysisText": "截至我的知识截止日，OpenAI并未发布名为\"gpt-5.4\"的模型。OpenAI最新公开系列为GPT-4及其变体（如GPT-4o、GPT-4.1等）。该模型名称可能为内部代号、误记或虚构。建议核实模型名称后重新评测，或提供具体模型信息以便准确评分。",
+      "quotaLevel": "limited"
+    },
+    {
+      "source": "analyzed",
+      "capabilities": {
+        "creative": 7,
+        "reasoning": 8,
+        "instruction": 8,
+        "longContext": 9,
+        "chinese": 7
+      },
+      "modelId": "gemini-3.1-flash",
+      "lastUpdated": "2026-05-07T14:51:32.781Z",
+      "notes": "少量",
+      "displayName": "Gemini 3.1 Flash",
+      "provider": "Google",
+      "contextWindow": 1000000,
+      "analysisText": "Gemini Flash系列以高推理效率和超长上下文（1M tokens）著称，逻辑推理与指令遵循表现稳健。中文写作能力良好但文学性与文化底蕴略逊于国内头部模型。创意叙事流畅但偶显模板化，人物刻画深度有限。适合结构化写作与长篇素材处理，纯文学创作建议搭配更强创意模型。",
+      "quotaLevel": "limited"
+    },
+    {
+      "source": "analyzed",
+      "capabilities": {
+        "creative": 7,
+        "reasoning": 8,
+        "instruction": 7,
+        "longContext": 9,
+        "chinese": 6
+      },
+      "modelId": "gemini-3-flash",
+      "lastUpdated": "2026-05-07T14:51:36.049Z",
+      "notes": "少量",
+      "displayName": "Gemini 3 Flash",
+      "provider": "Google",
+      "contextWindow": 1000000,
+      "analysisText": "Gemini Flash系列以推理能力强、上下文窗口大（最高100万token）著称。创意写作方面表现中规中矩，叙事流畅但文学性与情感深度不及中文原生模型。指令遵循能力良好，偶有格式偏差。中文写作语法正确、表达清晰，但词汇丰富度、文化语境理解和修辞手法运用相对薄弱，缺乏地道中文文学韵味。适合需要长文本处理与逻辑连贯性要求的场景，纯文学创作建议搭配更擅长中文的模型。"
+    }
+  ]
+}

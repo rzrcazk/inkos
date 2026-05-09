@@ -40,6 +40,7 @@ import {
   fetchWithProxy,
   chatCompletion,
   buildExportArtifact,
+  readTranscriptEvents,
   type ResolvedModel,
   type PipelineConfig,
   type ProjectConfig,
@@ -52,6 +53,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { isSafeBookId } from "./safety.js";
 import { ApiError } from "./errors.js";
 import { buildStudioBookConfig } from "./book-create.js";
+import type { ModelCapabilities, ModelCapabilityProfile } from "../types/model-capability.js";
 
 // -- Pipeline stage definitions per agent type --
 
@@ -424,6 +426,22 @@ async function saveRawConfig(root: string, config: Record<string, unknown>): Pro
   await writeFile(join(root, "inkos.json"), JSON.stringify(config, null, 2), "utf-8");
 }
 
+// --- Model capability profiles ---
+
+async function loadCapabilityProfiles(root: string): Promise<ModelCapabilityProfile[]> {
+  const filePath = join(root, "model-capabilities.json");
+  try {
+    const raw = JSON.parse(await readFile(filePath, "utf-8")) as { profiles?: unknown };
+    return Array.isArray(raw.profiles) ? (raw.profiles as ModelCapabilityProfile[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveCapabilityProfiles(root: string, profiles: ModelCapabilityProfile[]): Promise<void> {
+  await writeFile(join(root, "model-capabilities.json"), JSON.stringify({ profiles }, null, 2), "utf-8");
+}
+
 async function readSecretsConfigSummary(projectRoot: string): Promise<EnvConfigSummary> {
   try {
     const secrets = await loadSecrets(projectRoot);
@@ -484,11 +502,7 @@ async function readEnvConfigStatus(root: string): Promise<EnvConfigStatus> {
 async function resolveConfiguredServiceBaseUrl(root: string, serviceId: string, inlineBaseUrl?: string): Promise<string | undefined> {
   if (inlineBaseUrl?.trim()) return inlineBaseUrl.trim();
 
-  // Try preset baseUrl first (for known services like minimax, bailian, etc.)
-  const presetBaseUrl = resolveServicePreset(serviceId)?.baseUrl;
-  if (presetBaseUrl) return presetBaseUrl;
-
-  // For services with empty preset baseUrl (e.g. newapi, ollama), check inkos.json config
+  // Check user-configured baseUrl first (inkos.json services[].baseUrl)
   try {
     const config = await loadRawConfig(root);
     const services = normalizeServiceConfig((config.llm as Record<string, unknown> | undefined)?.services);
@@ -498,7 +512,8 @@ async function resolveConfiguredServiceBaseUrl(root: string, serviceId: string, 
     // ignore
   }
 
-  return undefined;
+  // Fall back to preset baseUrl
+  return resolveServicePreset(serviceId)?.baseUrl;
 }
 
 async function resolveConfiguredServiceEntry(root: string, serviceId: string): Promise<ServiceConfigEntry | undefined> {
@@ -2008,19 +2023,78 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         }
       }
 
+      // Infer action from instruction when caller didn't provide one
+      const trimmedInstr = instruction.trim().toLowerCase();
+      const effectiveAction = reqAction ?? (
+        isWriteNextInstruction(instruction) ? "write-next"
+        : trimmedInstr === "审计" || trimmedInstr === "audit" ? "auditor"
+        : trimmedInstr === "帮我修复" || trimmedInstr === "修复" || trimmedInstr === "继续修复" || trimmedInstr === "revise" ? "reviser"
+        : trimmedInstr === "润色" || trimmedInstr === "polish" ? "polisher"
+        : trimmedInstr === "市场雷达" || trimmedInstr === "扫描市场趋势" ? "radar"
+        : !agentBookId ? "draft"
+        : undefined
+      );
+
+      // For intent understanding: holds the (possibly LLM-inferred) action when text matching fails
+      let inferredAction: string | undefined = effectiveAction;
+
       if (!resolvedModel) {
-        // 2. Try task route from llm.routes config
-        const rawConfig = config.llm as unknown as Record<string, unknown>;
-        const routes = rawConfig.routes as Record<string, { service: string; model: string }> | undefined;
-        if (reqAction && routes?.[reqAction]) {
-          const route = routes[reqAction];
-          const configuredEntry = await resolveConfiguredServiceEntry(root, route.service);
+        // Intent understanding: use LLM to infer agent from conversation context
+        if (!effectiveAction && agentBookId && sessionId) {
+          try {
+            const events = await readTranscriptEvents(root, sessionId);
+            const recentMessages = events
+              .filter((e) => e.type === "message")
+              .slice(-10);
+
+            const historyText = recentMessages
+              .map((e) => {
+                if (e.type !== "message") return "";
+                const msg = e as { role: string; message: unknown };
+                const content = typeof msg.message === "string"
+                  ? msg.message
+                  : (msg.message as { content?: string })?.content ?? "";
+                return `${msg.role}: ${content.slice(0, 200)}`;
+              })
+              .filter(Boolean)
+              .join("\n");
+
+            const intentPrompt = historyText
+              ? `对话历史：\n${historyText}\n\n用户最新输入："${instruction}"\n可选agent：writer, architect, auditor, reviser, polisher, planner, radar, foundation-reviewer, length-normalizer, chapter-analyzer, state-validator, fanfic-canon-importer\n请判断用户想用哪个agent。只返回agent名字，不要其他内容。`
+              : `用户输入："${instruction}"\n可选agent：writer, architect, auditor, reviser, polisher, planner, radar, foundation-reviewer, length-normalizer, chapter-analyzer, state-validator, fanfic-canon-importer\n请判断用户想用哪个agent。只返回agent名字，不要其他内容。`;
+
+            const defaultClient = createLLMClient(config.llm);
+            const response = await chatCompletion(
+              defaultClient,
+              config.llm.model,
+              [{ role: "user", content: intentPrompt }],
+              { maxTokens: 64 },
+            );
+
+            const parsed = response.content?.trim().toLowerCase();
+            if (parsed && /^[a-z][a-z0-9-]*$/.test(parsed)) {
+              inferredAction = parsed;
+            }
+          } catch (e) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            return c.json({
+              error: `意图理解失败，请检查默认模型是否可用。错误：${errMsg}`,
+            }, 400);
+          }
+        }
+
+        // 3. Try modelOverrides with (possibly inferred) effectiveAction
+        const modelOverrides = (config as unknown as Record<string, unknown>).modelOverrides as Record<string, { service?: string; model: string }> | undefined;
+        if (inferredAction && modelOverrides?.[inferredAction]) {
+          const override = modelOverrides[inferredAction];
+          const service = override.service ?? "openai";
+          const configuredEntry = await resolveConfiguredServiceEntry(root, service);
           try {
             const resolved = await resolveServiceModel(
-              route.service,
-              route.model,
+              service,
+              override.model,
               root,
-              await resolveConfiguredServiceBaseUrl(root, route.service),
+              await resolveConfiguredServiceBaseUrl(root, service),
               configuredEntry?.apiFormat,
             );
             resolvedModel = resolved.model;
@@ -2030,13 +2104,26 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       }
 
       if (!resolvedModel) {
-        const actionInfo = reqAction ? ` 当前请求 action: "${reqAction}"` : "";
-        const serviceInfo = reqService ? ` 前端选择: service="${reqService}", model="${reqModel}"` : "";
-        const routesInfo = reqAction
-          ? ` 可用路由: ${JSON.stringify((config.llm as unknown as Record<string, unknown>).routes ?? {})}`
-          : "";
+        const finalAction = inferredAction ?? effectiveAction;
+        const actionInfo = finalAction ? ` 当前请求 action: "${finalAction}"` : "";
+        const modelOverrides = (config as unknown as Record<string, unknown>).modelOverrides as Record<string, { service?: string; model: string }> | undefined;
+
+        // Build available overrides info, filtering out disabled services
+        let overridesInfo = "";
+        if (modelOverrides) {
+          const filtered: Record<string, { service?: string; model: string }> = {};
+          for (const [key, override] of Object.entries(modelOverrides)) {
+            const service = override.service ?? "openai";
+            const svcEntry = await resolveConfiguredServiceEntry(root, service);
+            if (svcEntry?.enabled !== false) {
+              filtered[key] = override;
+            }
+          }
+          overridesInfo = ` 可用配置: ${JSON.stringify(filtered)}`;
+        }
+
         return c.json({
-          error: `未找到模型路由配置。${actionInfo}${serviceInfo}${routesInfo}，请在 inkos.json 的 llm.routes 中为 "${reqAction}" 配置 service + model，或在前端选择服务模型`,
+          error: `未找到模型配置。${actionInfo}${overridesInfo}，请在模型路由页面为 "${finalAction}" 配置 service + model`,
         }, 400);
       }
 
@@ -2477,9 +2564,46 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       const content = await readFile(join(chaptersDir, match), "utf-8");
       const currentConfig = await loadCurrentProjectConfig();
       const { ContinuityAuditor } = await import("@actalk/inkos-core");
+
+      // Resolve auditor model via routes.auditor, falling back to llm.model
+      let auditorModel = currentConfig.llm.model;
+      let auditorApiKey: string | undefined;
+      let auditorClient = createLLMClient(currentConfig.llm);
+      const rawConfig = currentConfig.llm as unknown as Record<string, unknown>;
+      const routes = rawConfig.routes as Record<string, { service: string; model: string }> | undefined;
+      if (routes?.auditor) {
+        const route = routes.auditor;
+        const configuredEntry = await resolveConfiguredServiceEntry(root, route.service);
+        try {
+          const resolved = await resolveServiceModel(
+            route.service,
+            route.model,
+            root,
+            await resolveConfiguredServiceBaseUrl(root, route.service),
+            configuredEntry?.apiFormat,
+          );
+          auditorModel = route.model;
+          auditorApiKey = resolved.apiKey;
+          auditorClient = createLLMClient({
+            ...currentConfig.llm,
+            service: configuredEntry?.service ?? route.service,
+            model: route.model,
+            apiKey: resolved.apiKey ?? "",
+            ...(configuredEntry?.apiFormat ? { apiFormat: configuredEntry.apiFormat } : {}),
+            baseUrl: configuredEntry?.baseUrl ?? "",
+          } as any);
+        } catch (e: any) {
+          const msg = e?.message ?? String(e);
+          if (/API key/i.test(msg)) {
+            return c.json({ error: `请先为 ${route.service} 配置 API Key` }, 400);
+          }
+          throw e;
+        }
+      }
+
       const auditor = new ContinuityAuditor({
-        client: createLLMClient(currentConfig.llm),
-        model: currentConfig.llm.model,
+        client: auditorClient,
+        model: auditorModel,
         projectRoot: root,
         bookId: id,
       });
@@ -2657,6 +2781,123 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const { writeFile: writeFileFs } = await import("node:fs/promises");
     await writeFileFs(configPath, JSON.stringify(raw, null, 2), "utf-8");
     return c.json({ ok: true });
+  });
+
+  // --- Model capability profiles ---
+
+  app.get("/api/v1/model-capabilities", async (c) => {
+    const profiles = await loadCapabilityProfiles(root);
+    return c.json({ profiles });
+  });
+
+  app.put("/api/v1/model-capabilities/:modelId", async (c) => {
+    const modelId = decodeURIComponent(c.req.param("modelId"));
+    const body = await c.req.json<Partial<ModelCapabilityProfile>>();
+    const profiles = await loadCapabilityProfiles(root);
+    const idx = profiles.findIndex((p) => p.modelId === modelId);
+    const existing = idx >= 0 ? profiles[idx] : undefined;
+    const defaultCaps: ModelCapabilities = { creative: 5, reasoning: 5, instruction: 5, longContext: 5, chinese: 5 };
+    const updated: ModelCapabilityProfile = {
+      source: "manual",
+      capabilities: defaultCaps,
+      ...existing,
+      ...body,
+      modelId,
+      lastUpdated: new Date().toISOString(),
+    };
+    if (idx >= 0) profiles[idx] = updated;
+    else profiles.push(updated);
+    await saveCapabilityProfiles(root, profiles);
+    return c.json({ ok: true, profile: updated });
+  });
+
+  app.delete("/api/v1/model-capabilities/:modelId", async (c) => {
+    const modelId = decodeURIComponent(c.req.param("modelId"));
+    const profiles = await loadCapabilityProfiles(root);
+    await saveCapabilityProfiles(root, profiles.filter((p) => p.modelId !== modelId));
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/v1/model-capabilities/:modelId/analyze", async (c) => {
+    const modelId = decodeURIComponent(c.req.param("modelId"));
+    let currentConfig: Awaited<ReturnType<typeof loadProjectConfig>>;
+    try {
+      currentConfig = await loadProjectConfig(root, { consumer: "studio", requireApiKey: false });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return c.json({ error: `加载项目配置失败：${msg}` }, 400);
+    }
+
+    const defaultModel = currentConfig.llm.model ?? (currentConfig.llm as Record<string, unknown>).defaultModel as string | undefined;
+    if (!defaultModel) return c.json({ error: "未配置默认模型，请先在服务设置中选择一个默认模型" }, 400);
+
+    const client = createLLMClient(currentConfig.llm);
+
+    const prompt = `你是一位 AI 模型评测专家，专注于中文小说写作场景。
+请根据你对模型 "${modelId}" 的了解，给出以下 6 个维度的能力评分（0-10 整数），并附上简短分析。
+
+评分维度说明：
+- creative（创意写作）：文学性、叙事流畅度、人物刻画、情感表达
+- reasoning（推理分析）：逻辑推理、情节分析、连贯性检查
+- instruction（指令遵循）：精确执行格式要求、约束条件遵守
+- longContext（长上下文容量）：处理长篇文本的能力，10=超长上下文，0=极短
+- chinese（中文能力）：中文写作质量、文化理解、词汇丰富度
+请严格输出 JSON，不要有多余文字：
+{
+  "capabilities": {
+    "creative": <0-10>,
+    "reasoning": <0-10>,
+    "instruction": <0-10>,
+    "longContext": <0-10>,
+    "chinese": <0-10>
+  },
+  "displayName": "<模型友好名称>",
+  "provider": "<提供商名称>",
+  "contextWindow": <上下文窗口大小如128000，未知则null>,
+  "analysisText": "<200字以内的综合分析>"
+}`;
+
+    let result: Awaited<ReturnType<typeof chatCompletion>>;
+    try {
+      result = await chatCompletion(
+        client,
+        defaultModel,
+        [{ role: "user", content: prompt }],
+        { maxTokens: 1024 },
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[studio] model-capabilities analyze failed", err);
+      return c.json({ error: `LLM 调用失败：${msg}` }, 502);
+    }
+
+    let parsed: Partial<ModelCapabilityProfile & { capabilities: ModelCapabilities }> = {};
+    try {
+      const text = result.content ?? "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]) as typeof parsed;
+    } catch { /* use defaults */ }
+
+    const defaultCaps: ModelCapabilities = { creative: 5, reasoning: 5, instruction: 5, longContext: 5, chinese: 5 };
+    const profiles = await loadCapabilityProfiles(root);
+    const idx = profiles.findIndex((p) => p.modelId === modelId);
+    const existing = idx >= 0 ? profiles[idx] : undefined;
+    const updated: ModelCapabilityProfile = {
+      ...existing,
+      modelId,
+      displayName: parsed.displayName ?? existing?.displayName,
+      provider: parsed.provider ?? existing?.provider,
+      contextWindow: parsed.contextWindow !== undefined ? parsed.contextWindow : existing?.contextWindow,
+      capabilities: parsed.capabilities ?? existing?.capabilities ?? defaultCaps,
+      analysisText: parsed.analysisText ?? existing?.analysisText,
+      notes: existing?.notes,
+      source: "analyzed",
+      lastUpdated: new Date().toISOString(),
+    };
+    if (idx >= 0) profiles[idx] = updated;
+    else profiles.push(updated);
+    await saveCapabilityProfiles(root, profiles);
+    return c.json({ ok: true, profile: updated });
   });
 
   // --- Notify channels ---

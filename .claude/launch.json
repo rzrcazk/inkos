@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "studio-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@actalk/inkos-studio", "dev"],
+      "port": 4567
+    }
+  ]
+}

@@ -36,6 +36,7 @@ import {
   Pencil,
   Trash2,
   Route,
+  BrainCircuit,
 } from "lucide-react";
 
 interface BookSummary {
@@ -59,6 +60,7 @@ interface Nav {
   toRadar: () => void;
   toDoctor: () => void;
   toModelRouting: () => void;
+  toModelCapabilities: () => void;
 }
 
 export function Sidebar({ nav, activePage, sse, t }: {
@@ -336,6 +338,12 @@ export function Sidebar({ nav, activePage, sse, t }: {
               icon={<Route size={16} />}
               active={activePage === "model-routing"}
               onClick={nav.toModelRouting}
+            />
+            <SidebarItem
+              label="模型能力"
+              icon={<BrainCircuit size={16} />}
+              active={activePage === "model-capabilities"}
+              onClick={nav.toModelCapabilities}
             />
 {/*            <SidebarItem
               label={t("nav.daemon")}

@@ -1,16 +1,9 @@
-import { useRef, useEffect, useMemo, useState } from "react";
+import { useRef, useEffect, useMemo } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
 import { fetchJson } from "../hooks/use-api";
 import { chatSelectors, useChatStore } from "../store/chat";
-import { useServiceStore } from "../store/service";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "../components/ui/dropdown-menu";
 import {
   Reasoning,
   ReasoningTrigger,
@@ -23,8 +16,6 @@ import {
   Loader2,
   BotMessageSquare,
   ArrowUp,
-  ChevronDown,
-  Check,
 } from "lucide-react";
 import { Shimmer } from "../components/ai-elements/shimmer";
 import {
@@ -32,10 +23,7 @@ import {
   MessageContent,
 } from "../components/ai-elements/message";
 import {
-  type ChatPageModelPreference,
-  filterModelGroups,
   getBookCreateSessionId,
-  pickModelSelection,
   setBookCreateSessionId,
 } from "./chat-page-state";
 
@@ -44,7 +32,6 @@ import {
 interface Nav {
   toDashboard: () => void;
   toBook: (id: string) => void;
-  toServices: () => void;
 }
 
 export interface ChatPageProps {
@@ -55,11 +42,6 @@ export interface ChatPageProps {
   readonly sse: { messages: ReadonlyArray<SSEMessage>; connected: boolean };
 }
 
-interface ServiceConfigPayload {
-  readonly service?: string | null;
-  readonly defaultModel?: string | null;
-}
-
 // -- Component --
 
 export function ChatPage({ activeBookId, nav, theme, t, sse: _sse }: ChatPageProps) {
@@ -68,12 +50,9 @@ export function ChatPage({ activeBookId, nav, theme, t, sse: _sse }: ChatPagePro
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const input = useChatStore((s) => s.input);
   const loading = useChatStore(chatSelectors.isActiveSessionStreaming);
-  const selectedModel = useChatStore((s) => s.selectedModel);
-  const selectedService = useChatStore((s) => s.selectedService);
   // -- Store actions --
   const setInput = useChatStore((s) => s.setInput);
   const sendMessage = useChatStore((s) => s.sendMessage);
-  const setSelectedModel = useChatStore((s) => s.setSelectedModel);
   const loadSessionList = useChatStore((s) => s.loadSessionList);
   const createSession = useChatStore((s) => s.createSession);
   const loadSessionDetail = useChatStore((s) => s.loadSessionDetail);
@@ -93,86 +72,6 @@ export function ChatPage({ activeBookId, nav, theme, t, sse: _sse }: ChatPagePro
       || !last.content
       || (last.toolExecutions?.some(t => t.status === "running" || t.status === "processing") ?? false);
   }, [messages]);
-
-  // -- Model picker: read raw state, derive with useMemo (stable refs) --
-  const services = useServiceStore((s) => s.services);
-  const servicesLoading = useServiceStore((s) => s.servicesLoading);
-  const bankModelsLoading = useServiceStore((s) => s.bankModelsLoading);
-  const customModelsLoading = useServiceStore((s) => s.customModelsLoading);
-  const modelsByService = useServiceStore((s) => s.modelsByService);
-  const fetchServices = useServiceStore((s) => s.fetchServices);
-  const fetchBankModels = useServiceStore((s) => s.fetchBankModels);
-  const fetchCustomModels = useServiceStore((s) => s.fetchCustomModels);
-  const [configuredModelSelection, setConfiguredModelSelection] = useState<ChatPageModelPreference | null>(null);
-  const [serviceConfigLoaded, setServiceConfigLoaded] = useState(false);
-
-  useEffect(() => { void fetchServices(); }, [fetchServices]);
-  useEffect(() => {
-    void fetchBankModels();
-    void fetchCustomModels();
-  }, [fetchBankModels, fetchCustomModels]);
-  useEffect(() => {
-    let cancelled = false;
-
-    void fetchJson<ServiceConfigPayload>("/services/config")
-      .then((payload) => {
-        if (cancelled) return;
-        setConfiguredModelSelection({
-          service: payload.service ?? null,
-          model: payload.defaultModel ?? null,
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setConfiguredModelSelection(null);
-      })
-      .finally(() => {
-        if (!cancelled) setServiceConfigLoaded(true);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const modelPickerStatus = useMemo(() => {
-    if (servicesLoading || services.length === 0) return "loading" as const;
-    const connected = services.filter((s) => s.connected);
-    if (connected.length === 0) return "no-models" as const;
-    if (bankModelsLoading) return "loading" as const;
-    if (connected.some((s) => (modelsByService[s.service]?.length ?? 0) > 0)) return "ready" as const;
-    const hasConnectedBank = connected.some((s) => !s.service.startsWith("custom"));
-    const hasConnectedCustom = connected.some((s) => s.service.startsWith("custom"));
-    if (!hasConnectedBank && hasConnectedCustom && customModelsLoading) return "loading" as const;
-    return "no-models" as const;
-  }, [services, servicesLoading, bankModelsLoading, customModelsLoading, modelsByService]);
-
-  const groupedModels = useMemo(() => {
-    return services
-      .filter((s) => s.connected && (modelsByService[s.service]?.length ?? 0) > 0)
-      .map((s) => ({ service: s.service, label: s.label, models: modelsByService[s.service]! }));
-  }, [services, modelsByService]);
-
-  const selectedModelLabel = useMemo(() => {
-    if (!selectedModel) return "选择模型";
-    const group = groupedModels.find((item) => item.service === selectedService);
-    const model = group?.models.find((item) => item.id === selectedModel);
-    const modelLabel = model?.name ?? selectedModel;
-    return group ? `${group.label} · ${modelLabel}` : modelLabel;
-  }, [groupedModels, selectedModel, selectedService]);
-
-  // Auto-select from saved service config first, then fall back to the first available model.
-  useEffect(() => {
-    if (!serviceConfigLoaded) return;
-    const nextSelection = pickModelSelection(
-      groupedModels,
-      selectedModel,
-      selectedService,
-      configuredModelSelection,
-    );
-    if (nextSelection) {
-      setSelectedModel(nextSelection.model, nextSelection.service);
-    }
-  }, [configuredModelSelection, groupedModels, selectedModel, selectedService, serviceConfigLoaded, setSelectedModel]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -395,104 +294,9 @@ export function ChatPage({ activeBookId, nav, theme, t, sse: _sse }: ChatPagePro
                   {loading ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={14} strokeWidth={2.5} />}
                 </button>
               </div>
-              <div className="flex items-center gap-2 px-3 pb-2 border-t border-border/20 pt-1.5">
-                {modelPickerStatus === "loading" ? (
-                  <span className="text-xs text-muted-foreground/40 animate-pulse">加载模型...</span>
-                ) : modelPickerStatus === "ready" ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-muted text-sm transition-colors cursor-pointer">
-                      <span className="font-medium text-xs truncate max-w-[220px]">
-                        {selectedModelLabel}
-                      </span>
-                      <ChevronDown size={14} className="text-muted-foreground" />
-                    </DropdownMenuTrigger>
-                    <ModelPickerContent
-                      groupedModels={groupedModels}
-                      selectedModel={selectedModel}
-                      selectedService={selectedService}
-                      onSelect={setSelectedModel}
-                      onManage={() => nav.toServices()}
-                    />
-                  </DropdownMenu>
-                ) : (
-                  <button
-                    onClick={() => nav.toServices()}
-                    className="text-xs text-muted-foreground/50 hover:text-primary transition-colors"
-                  >
-                    配置模型 →
-                  </button>
-                )}
-              </div>
             </div>
         </div>
       </div>
     </div>
-  );
-}
-
-function ModelPickerContent({
-  groupedModels,
-  selectedModel,
-  selectedService,
-  onSelect,
-  onManage,
-}: {
-  groupedModels: ReadonlyArray<{ service: string; label: string; models: ReadonlyArray<{ id: string; name?: string }> }>;
-  selectedModel: string | null;
-  selectedService: string | null;
-  onSelect: (model: string, service: string) => void;
-  onManage: () => void;
-}) {
-  const [search, setSearch] = useState("");
-  const filtered = useMemo(() => filterModelGroups(groupedModels, search), [groupedModels, search]);
-
-  return (
-    <DropdownMenuContent side="top" align="start" className="w-64 max-h-80 flex flex-col">
-      <div className="px-2 py-1.5 border-b border-border/30">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="搜索模型..."
-          className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/40"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-        />
-      </div>
-      <div className="overflow-y-auto flex-1">
-        {filtered.map((group) => (
-          <div key={group.service}>
-            <div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-              {group.label}
-            </div>
-            {group.models.map((m) => {
-              const isSelected = selectedModel === m.id && selectedService === group.service;
-              return (
-                <DropdownMenuItem
-                  key={`${group.service}:${m.id}`}
-                  onClick={() => onSelect(m.id, group.service)}
-                  className={isSelected ? "bg-muted/50" : ""}
-                >
-                  <div className="flex flex-1 items-center justify-between">
-                    <span className="text-sm">{m.name ?? m.id}</span>
-                    {isSelected && <Check size={14} className="text-primary shrink-0" />}
-                  </div>
-                </DropdownMenuItem>
-              );
-            })}
-          </div>
-        ))}
-        {filtered.length === 0 && (
-          <div className="px-3 py-4 text-xs text-muted-foreground/50 text-center italic">
-            无匹配模型
-          </div>
-        )}
-      </div>
-      <div className="border-t border-border/30">
-        <DropdownMenuItem onClick={onManage} className="text-primary">
-          管理服务商
-        </DropdownMenuItem>
-      </div>
-    </DropdownMenuContent>
   );
 }

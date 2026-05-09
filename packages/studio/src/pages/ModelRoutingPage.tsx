@@ -3,6 +3,7 @@ import { useApi, putApi, fetchJson } from "../hooks/use-api";
 import { useServiceStore } from "../store/service";
 import type { TFunction, StringKey } from "../hooks/use-i18n";
 import { useSmartRouting } from "../hooks/use-smart-routing";
+import type { ModelCapabilityProfile } from "../types/model-capability";
 import {
   Select,
   SelectContent,
@@ -61,6 +62,8 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
     services: ReadonlyArray<{ service: string; connected: boolean; selectedModels?: readonly string[] }>;
   }>("/services/config");
 
+  const { data: capabilitiesData } = useApi<{ profiles: ModelCapabilityProfile[] }>("/model-capabilities");
+
   const services = useServiceStore((s) => s.services);
   const modelsByService = useServiceStore((s) => s.modelsByService);
   const bankModelsLoading = useServiceStore((s) => s.bankModelsLoading);
@@ -70,7 +73,9 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
   const customModelsLoading = useServiceStore((s) => s.customModelsLoading);
   const fetchLiveModels = useServiceStore((s) => s.fetchLiveModels);
 
-  const [form, setForm] = useState<Record<string, AgentOverride>>({});
+  const [form, setForm] = useState<Record<string, AgentOverride>>(
+    Object.fromEntries(AGENTS.map((a) => [a.key, { enabled: false, service: "", model: "" }])),
+  );
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
   const [showAdvanced, setShowAdvanced] = useState<Record<string, boolean>>({});
@@ -222,6 +227,7 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
     resolvedModelsByService,
     defaultModel,
     defaultService,
+    capabilitiesData?.profiles ?? [],
   );
 
   // Agent key → label map for the recommendations panel
@@ -541,12 +547,11 @@ export function ModelRoutingPage({ nav, t }: { nav: Nav; t: TFunction }) {
   );
 }
 
-// Collapsible routing rules section
-const TIERS = [
-  { tierKey: "top", color: "text-purple-600" as const, agents: "写手, 建筑师, 审核" },
-  { tierKey: "high", color: "text-amber-600" as const, agents: "审计员, 修订者" },
-  { tierKey: "midhigh", color: "text-blue-600" as const, agents: "规划师, 章节分析, 同人导入" },
-  { tierKey: "mid", color: "text-green-600" as const, agents: "雷达, 润色, 状态校验, 字数规范化" },
+const CAPABILITY_WEIGHTS = [
+  { agent: "写手 / 修订者 / 润色", dims: "创意★★★ · 中文★★★ · 上下文★★", color: "text-purple-600" as const },
+  { agent: "审计员 / 架构师 / 基础审核", dims: "推理★★★ · 指令★★★ · 上下文★★★", color: "text-amber-600" as const },
+  { agent: "规划师 / 章节分析", dims: "推理★★★ · 中文★★ · 成本★", color: "text-blue-600" as const },
+  { agent: "状态校验 / 字数规范 / 雷达", dims: "指令★★★ · 成本★★★", color: "text-green-600" as const },
 ];
 
 function SmartRoutingRules({ t }: { t: TFunction }) {
@@ -570,17 +575,13 @@ function SmartRoutingRules({ t }: { t: TFunction }) {
 
       {open && (
         <div className="px-3 pb-3 space-y-2">
-          {TIERS.map((tier) => (
-            <div key={tier.tierKey} className="flex items-start gap-2 text-xs">
-              <span className={`shrink-0 font-medium ${tier.color}`}>
-                {t(`config.tier.${tier.tierKey}` as StringKey)}
-              </span>
-              <span className="text-muted-foreground/60">
-                {t(`config.tier.${tier.tierKey}.desc` as StringKey)}
-              </span>
-              <span className="text-muted-foreground/40 ml-auto shrink-0">
-                → {tier.agents}
-              </span>
+          <p className="text-xs text-muted-foreground/60 mb-2">
+            路由基于<span className="text-foreground/70">模型能力档案</span>评分，每个 Agent 按所需能力维度加权打分后取最高分的可用模型。无档案的模型按各维度 5 分通用处理。
+          </p>
+          {CAPABILITY_WEIGHTS.map((row) => (
+            <div key={row.agent} className="flex items-start gap-2 text-xs">
+              <span className={`shrink-0 font-medium ${row.color}`}>{row.agent}</span>
+              <span className="text-muted-foreground/50 ml-auto shrink-0 text-right">{row.dims}</span>
             </div>
           ))}
         </div>
