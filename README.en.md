@@ -27,14 +27,28 @@ Open-source AI Agent that autonomously writes, audits, and revises novels — wi
 
 **v1.3.10 book creation platform hotfix** — fixes `sub_agent.platform` schema validation failures during Studio and CLI book creation. Studio, CLI, TUI, and agent create-book paths now normalize platform aliases to supported values.
 
-**Native English novel writing now supported！** — 10 built-in English genre profiles with dedicated pacing rules, fatigue word lists, and audit dimensions. Set `--lang en` and go.
-
-## Quick Start
+**dev branch — Studio configuration upgrade** — LLM configuration rebuilt: legacy env mode removed, unified to Studio service configuration + `.inkos/secrets.json` management. New service provider management page (visual configuration, connection testing, model selection), model routing UI (per-agent model assignment + task routes configuration), model capabilities page (capability matrix). Market radar now supports service/model selection; smart routing algorithm refactored; LLM configuration validation enhanced.
 
 ### Install
 
+#### Released version (recommended)
+
 ```bash
 npm i -g @actalk/inkos
+```
+
+#### Development version (local build)
+
+The dev branch changes are not yet published to npm. Install locally:
+
+```bash
+git clone https://github.com/Narcooo/inkos.git
+cd inkos
+git checkout dev
+pnpm install
+pnpm build
+# Global link (optional)
+pnpm --filter @actalk/inkos link --global
 ```
 
 ### Use via OpenClaw 🦞
@@ -65,56 +79,30 @@ Atomic commands (`plan chapter` / `compose chapter` / `draft` / `audit` / `revis
 
 ### Configure
 
-**Option 1: Global config (recommended, one-time setup)**
-
-```bash
-inkos config set-global \
-  --lang en \
-  --provider <openai|anthropic|custom> \
-  --base-url <API endpoint> \
-  --api-key <your API key> \
-  --model <model name>
-
-# provider: openai / anthropic / custom (use custom for OpenAI-compatible proxies)
-# base-url: your API provider URL
-# api-key: your API key
-# model: your model name
-```
-
-`--lang en` sets English as the default writing language for all projects. Saved to `~/.inkos/.env`. New projects just work without extra config.
-
-**Option 2: Per-project `.env`**
+**Option 1: Studio Service Configuration**
 
 ```bash
 inkos init my-novel     # Initialize project
-# Edit my-novel/.env
+cd my-novel
+inkos                    # Launch Studio
 ```
 
-```bash
-# Required
-INKOS_LLM_PROVIDER=                               # openai / anthropic / custom (use custom for any OpenAI-compatible API)
-INKOS_LLM_BASE_URL=                               # API endpoint
-INKOS_LLM_API_KEY=                                 # API Key
-INKOS_LLM_MODEL=                                   # Model name
+Then configure in Studio's "Model Configuration" page:
 
-# Language (defaults to global setting or genre default)
-# INKOS_DEFAULT_LANGUAGE=en                        # en or zh
+1. Select a provider (Google Gemini, Moonshot, MiniMax, Zhipu, Bailian, Anthropic, or custom endpoint).
+2. Paste API Key, click "Test Connection".
+3. Select available models, save configuration.
+4. Return to the book page and start writing.
 
-# Optional
-# INKOS_LLM_TEMPERATURE=0.7                       # Temperature
-# INKOS_LLM_MAX_TOKENS=8192                        # Max output tokens
-# INKOS_LLM_THINKING_BUDGET=0                      # Anthropic extended thinking budget
-```
+The CLI reuses the services and keys configured by Studio, with one-time overrides via CLI parameters (`--service`, `--model`, `--api-key-env`, etc.).
 
-Project `.env` overrides global config. Skip it if no override needed.
-
-**Option 3: Multi-model routing (optional)**
+**Option 2: Multi-model routing (optional)**
 
 Assign different models to different agents — balance quality and cost:
 
 ```bash
 # Assign different models/providers to different agents
-inkos config set-model writer <model> --provider <provider> --base-url <url> --api-key-env <ENV_VAR>
+inkos config set-model writer <model> --provider <provider> --base-url <url>
 inkos config set-model auditor <model> --provider <provider>
 inkos config show-models        # View current routing
 ```
@@ -245,7 +233,7 @@ Every chapter creates an automatic state snapshot — `inkos write rewrite` roll
 
 The hook system uses Zod schema validation — `lastAdvancedChapter` must be an integer, `status` can only be open/progressing/deferred/resolved. JSON deltas from the LLM are processed through `applyRuntimeStateDelta` (immutable update) and `validateRuntimeState` (structural check) before persistence. Corrupted data is rejected, not propagated.
 
-User-configured `INKOS_LLM_MAX_TOKENS` now acts as a global cap on all API calls. Reserved keys in `llm.extra` (max_tokens, temperature, etc.) are automatically stripped to prevent accidental overrides.
+Reserved keys in `llm.extra` (max_tokens, temperature, etc.) are automatically stripped to prevent accidental overrides.
 
 ---
 
@@ -381,8 +369,8 @@ inkos agent "Create a progression fantasy about a mage who can only use one spel
 | `inkos status [id]` | Project status |
 | `inkos export [id]` | Export book (`--format txt/md/epub`, `--output <path>`, `--approved-only`) |
 | `inkos fanfic init` | Create a fanfic book from source material (`--from`, `--mode canon/au/ooc/cp`) |
-| `inkos config set-global` | Set global LLM config (~/.inkos/.env) |
-| `inkos config set-model <agent> <model>` | Per-agent model override (`--base-url`, `--provider`, `--api-key-env`) |
+| `inkos config set-global` | Set global LLM config (~/.inkos/secrets.json), shared by all projects |
+| `inkos config set-model <agent> <model>` | Per-agent model override (`--service`, `--base-url`, `--api-key-env`) |
 | `inkos config show-models` | Show current model routing |
 | `inkos doctor` | Diagnose setup issues (API connectivity test + provider compatibility hints) |
 | `inkos detect [id] [n]` | AIGC detection (`--all` for all chapters, `--stats` for statistics) |
