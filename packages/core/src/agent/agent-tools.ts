@@ -62,7 +62,7 @@ const SubAgentParams = Type.Object({
     Type.Literal("reviser"),
     Type.Literal("exporter"),
   ]),
-  instruction: Type.String({ description: "Natural language instruction for the sub-agent" }),
+  instruction: Type.Optional(Type.String({ description: "Natural language instruction for the sub-agent. Required for architect and exporter agents." })),
   bookId: Type.Optional(Type.String({
     description: "Optional book ID. In active-book sessions, omit it to use the current active book; if provided, it must match the current active book. For architect creation, this optionally sets the new book ID.",
   })),
